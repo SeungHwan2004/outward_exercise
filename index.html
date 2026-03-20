@@ -77,7 +77,7 @@ function BarChart({data,maxVal,scheds,sel,onSel}){
     )),
     data.map((d,i)=>{
       const s=scheds.find(x=>x.id===d.id);
-      const full=s&&s.event==="축구"&&d.yes>=2;
+      const full=s&&s.event==="축구"&&d.yes>=22;
       const cx=PL+gW*i+gW/2, isSel=sel===d.id;
       return h("g",{key:d.id,onClick:()=>onSel(d.id),style:{cursor:"pointer"}},
         isSel&&h("rect",{x:PL+gW*i+2,y:PT,width:gW-4,height:cH,fill:"rgba(49,130,246,0.07)",rx:6}),
