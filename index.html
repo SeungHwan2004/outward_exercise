@@ -4,10 +4,6 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>영외체련 인원조사</title>
-<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f8;color:#191919;min-height:100vh}
@@ -21,32 +17,28 @@ input,select,button{font-family:inherit}
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><p style="text-align:center;padding:4rem;color:#aaa;font-size:15px">불러오는 중...</p></div>
+
+<!-- 1. React -->
+<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<!-- 2. Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
 <script>
-// ★ Firebase 프로젝트 설정값을 아래에 붙여넣으세요 ★
 const firebaseConfig = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_AUTH_DOMAIN",
-  databaseURL:       "YOUR_DATABASE_URL",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId:             "YOUR_APP_ID"
+  apiKey: "AIzaSyCt5pNuKsXH7K_VuZTlSKQ2qI8cSFkrRdk",
+  authDomain: "outward-exercise-e35c1.firebaseapp.com",
+  databaseURL: "https://outward-exercise-e35c1-default-rtdb.firebaseio.com",
+  projectId: "outward-exercise-e35c1",
+  storageBucket: "outward-exercise-e35c1.firebasestorage.app",
+  messagingSenderId: "919136835385",
+  appId: "1:919136835385:web:ceca85d8c790f77d08fae8"
 };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
 
-const {useState,useEffect} = React;
-const e = React.createElement;
-
-// 관리자 비밀번호 해시 (해시 생성기로 만든 값으로 교체하세요)
 const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
 
-async function sha256(str){
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
-}
-const LS_ME    = "exercise_me_v4";
 const DEF_SCHEDS = [
   {id:1,date:"3월 20일 (금)",event:"축구",closed:false},
   {id:2,date:"4월 3일 (금)",event:"축구",closed:false},
@@ -55,202 +47,180 @@ const DEF_SCHEDS = [
   {id:5,date:"5월 15일 (금)",event:"족구",closed:false},
 ];
 
+async function sha256(str){
+  const buf = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
 function lsGet(k,d){try{const r=localStorage.getItem(k);return r?JSON.parse(r):d}catch{return d}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 
+const LS_ME = "ex_me_v5";
+
+/* Firebase 초기화 */
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const {useState,useEffect} = React;
+const h = React.createElement;
+
 /* ── SVG 차트 ── */
-function BarChartSVG({data,maxVal,scheds,selected,onSelect}){
-  const W=340,H=160,PL=28,PB=24,PT=10,PR=10;
-  const cW=W-PL-PR,cH=H-PB-PT,n=data.length,gW=cW/n,bW=Math.min(gW*0.28,22);
+function BarChart({data,maxVal,scheds,sel,onSel}){
+  const W=340,H=160,PL=28,PB=24,PT=10,PR=10,cW=W-PL-PR,cH=H-PB-PT;
+  const n=data.length,gW=cW/n,bW=Math.min(gW*0.28,22);
   const ys=v=>cH-(v/Math.max(maxVal,1))*cH;
   const ticks=[0,Math.ceil(maxVal/2),maxVal].filter((v,i,a)=>a.indexOf(v)===i);
-  return e("svg",{viewBox:"0 0 "+W+" "+H,style:{width:"100%",height:"auto",cursor:"pointer"}},
-    ticks.map(v=>e("g",{key:v},
-      e("line",{x1:PL,x2:W-PR,y1:PT+ys(v),y2:PT+ys(v),stroke:"rgba(0,0,0,0.06)",strokeWidth:1}),
-      e("text",{x:PL-4,y:PT+ys(v)+4,textAnchor:"end",fontSize:10,fill:"#bbb"},v)
+  return h("svg",{viewBox:"0 0 "+W+" "+H,style:{width:"100%",height:"auto"}},
+    ticks.map(v=>h("g",{key:v},
+      h("line",{x1:PL,x2:W-PR,y1:PT+ys(v),y2:PT+ys(v),stroke:"rgba(0,0,0,0.06)",strokeWidth:1}),
+      h("text",{x:PL-4,y:PT+ys(v)+4,textAnchor:"end",fontSize:10,fill:"#bbb"},v)
     )),
     data.map((d,i)=>{
       const s=scheds.find(x=>x.id===d.id);
-      const full=s?.event==="축구"&&d.yes>=22;
-      const cx=PL+gW*i+gW/2;
-      const isSel=selected===d.id;
-      return e("g",{key:d.id,onClick:()=>onSelect(d.id),style:{cursor:"pointer"}},
-        isSel&&e("rect",{x:PL+gW*i+2,y:PT,width:gW-4,height:cH,fill:"rgba(49,130,246,0.07)",rx:6}),
-        e("rect",{x:cx-bW-2,y:PT+ys(d.yes),width:bW,height:Math.max((d.yes/Math.max(maxVal,1))*cH,2),fill:full?"#3182f6":"#00b074",rx:4}),
-        e("rect",{x:cx+2,y:PT+ys(d.no),width:bW,height:Math.max((d.no/Math.max(maxVal,1))*cH,2),fill:"#f45452",rx:4}),
-        e("text",{x:cx,y:H-8,textAnchor:"middle",fontSize:10,fill:isSel?"#3182f6":"#bbb",fontWeight:isSel?"700":"400"},d.label)
+      const full=s&&s.event==="축구"&&d.yes>=22;
+      const cx=PL+gW*i+gW/2, isSel=sel===d.id;
+      return h("g",{key:d.id,onClick:()=>onSel(d.id),style:{cursor:"pointer"}},
+        isSel&&h("rect",{x:PL+gW*i+2,y:PT,width:gW-4,height:cH,fill:"rgba(49,130,246,0.07)",rx:6}),
+        h("rect",{x:cx-bW-2,y:PT+ys(d.yes),width:bW,height:Math.max((d.yes/Math.max(maxVal,1))*cH,2),fill:full?"#3182f6":"#00b074",rx:4}),
+        h("rect",{x:cx+2,y:PT+ys(d.no),width:bW,height:Math.max((d.no/Math.max(maxVal,1))*cH,2),fill:"#f45452",rx:4}),
+        h("text",{x:cx,y:H-8,textAnchor:"middle",fontSize:10,fill:isSel?"#3182f6":"#bbb",fontWeight:isSel?"700":"400"},d.label)
       );
     })
   );
 }
 
-/* ── 앱 ── */
+/* ── 메인 앱 ── */
 function App(){
-  const [ready,setReady]         = useState(false);
-  const [dbErr,setDbErr]         = useState("");
-  const [scheds,setScheds]       = useState(DEF_SCHEDS);
-  const [roster,setRoster]       = useState([]);
-  const [votes,setVotes]         = useState({});
-  const [me,setMe]               = useState(()=>lsGet(LS_ME,null));
-  const [authStep,setAuthStep]   = useState(()=>lsGet(LS_ME,null)?"done":"register");
-  const [form,setForm]           = useState({rank:"",serial:"",name:""});
-  const [loginForm,setLoginForm] = useState({rank:"",serial:"",name:""});
-  const [authErr,setAuthErr]     = useState("");
-  const [tab,setTab]             = useState("vote");
-  const [dTab,setDTab]           = useState(null);
-  const [aOpen,setAOpen]         = useState(false);
-  const [pw,setPw]               = useState("");
-  const [pwErr,setPwErr]         = useState(false);
-  const [isAdmin,setIsAdmin]     = useState(false);
-  const [eScheds,setEScheds]     = useState([]);
-  const [aView,setAView]         = useState("schedules");
+  const [ready,setReady]   = useState(false);
+  const [dbErr,setDbErr]   = useState("");
+  const [scheds,setScheds] = useState(DEF_SCHEDS);
+  const [roster,setRoster] = useState([]);
+  const [votes,setVotes]   = useState({});
+  const [me,setMe]         = useState(()=>lsGet(LS_ME,null));
+  const [step,setStep]     = useState(()=>lsGet(LS_ME,null)?"main":"reg");
+  // step: reg | login | main
+  const [form,setForm]     = useState({rank:"",serial:"",name:""});
+  const [authErr,setAuthErr]= useState("");
+  const [tab,setTab]       = useState("vote");
+  const [dTab,setDTab]     = useState(null);
+  const [aOpen,setAOpen]   = useState(false);
+  const [pw,setPw]         = useState("");
+  const [pwErr,setPwErr]   = useState(false);
+  const [isAdmin,setIsAdmin]= useState(false);
+  const [eScheds,setEScheds]= useState([]);
+  const [aView,setAView]   = useState("schedules");
 
-  /* Firebase 실시간 구독 */
+  /* Firebase 구독 */
   useEffect(()=>{
-    // 10초 타임아웃
-    const timeout = setTimeout(()=>{
-      if(!ready) setDbErr("Firebase 연결에 실패했습니다.\ndatabaseURL이 올바른지 확인해 주세요.\n\n현재 설정된 databaseURL:\n"+firebaseConfig.databaseURL);
-    }, 10000);
-
+    const tid = setTimeout(()=>setDbErr("Firebase 연결 실패.\ndatabaseURL을 확인해 주세요:\n"+firebaseConfig.databaseURL), 10000);
     db.ref("scheds").on("value", snap=>{
       const v=snap.val();
       if(v) setScheds(Object.values(v));
-      else db.ref("scheds").set(Object.fromEntries(DEF_SCHEDS.map(s=>[s.id,s])));
-      setReady(true);
-      clearTimeout(timeout);
-    }, err=>{
-      setDbErr("Firebase 오류: "+err.message);
-      clearTimeout(timeout);
-    });
-
-    db.ref("roster").on("value", snap=>{
-      const v=snap.val();
-      setRoster(v?Object.values(v):[]);
-    });
-    db.ref("votes").on("value", snap=>{
-      setVotes(snap.val()||{});
-    });
-
-    return ()=>{
-      clearTimeout(timeout);
-      db.ref("scheds").off();
-      db.ref("roster").off();
-      db.ref("votes").off();
-    };
+      else  db.ref("scheds").set(Object.fromEntries(DEF_SCHEDS.map(s=>[s.id,s])));
+      setReady(true); clearTimeout(tid);
+    }, err=>{ setDbErr("오류: "+err.message); clearTimeout(tid); });
+    db.ref("roster").on("value", snap=>{ const v=snap.val(); setRoster(v?Object.values(v):[]); });
+    db.ref("votes").on("value",  snap=>{ setVotes(snap.val()||{}); });
+    return ()=>{ db.ref("scheds").off(); db.ref("roster").off(); db.ref("votes").off(); };
   },[]);
 
   useEffect(()=>lsSet(LS_ME,me),[me]);
 
   /* 등록 */
-  const handleRegister=async()=>{
+  const doRegister=async()=>{
     const {rank,serial,name}=form;
     if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
-    const dup=roster.find(r=>r.rank===rank.trim()&&r.name===name.trim());
-    if(dup){setAuthErr("이미 등록된 이름입니다.\n본인이라면 아래 '본인 확인'으로 로그인해 주세요.");return;}
-    const serialHash = await sha256(serial.trim());
-    const newM={id:Date.now(),rank:rank.trim(),serialHash,name:name.trim()};
-    db.ref("roster/"+newM.id).set(newM);
-    setMe({...newM, serial:serial.trim()});
-    setAuthErr("");setAuthStep("done");setTab("vote");
+    if(roster.find(r=>r.rank===rank.trim()&&r.name===name.trim())){
+      setAuthErr("이미 등록된 이름입니다.\n본인이라면 '본인 확인'으로 로그인해 주세요.");return;
+    }
+    const serialHash=await sha256(serial.trim());
+    const m={id:Date.now(),rank:rank.trim(),serialHash,name:name.trim()};
+    db.ref("roster/"+m.id).set(m);
+    setMe({...m,serial:serial.trim()});
+    setAuthErr(""); setStep("main"); setTab("vote");
   };
 
   /* 로그인 */
-  const handleLogin=async()=>{
-    const {rank,serial,name}=loginForm;
+  const doLogin=async()=>{
+    const {rank,serial,name}=form;
     if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
-    const serialHash = await sha256(serial.trim());
-    const matched=roster.find(r=>r.rank===rank.trim()&&(r.serialHash===serialHash||r.serial===serial.trim())&&r.name===name.trim());
+    const serialHash=await sha256(serial.trim());
+    const matched=roster.find(r=>r.rank===rank.trim()&&r.name===name.trim()&&(r.serialHash===serialHash||r.serial===serial.trim()));
     if(!matched){setAuthErr("등록된 정보와 일치하지 않습니다.");return;}
-    setMe({...matched, serial:serial.trim()});
-    setAuthErr("");setAuthStep("done");setTab("vote");
+    setMe({...matched,serial:serial.trim()});
+    setAuthErr(""); setStep("main"); setTab("vote");
   };
 
   /* 투표 */
   const castVote=(sid,val)=>{
-    if(!me||scheds.find(s=>s.id===sid)?.closed)return;
+    if(!me||scheds.find(s=>s.id===sid)&&scheds.find(s=>s.id===sid).closed)return;
     db.ref("votes/"+sid+"/"+me.id).set(val);
   };
-  const getVote=sid=>(votes[sid]||{})[me?.id]??null;
+  const getVote=sid=>(votes[sid]||{})[me&&me.id]??null;
 
-  /* 현황 */
+  /* 통계 */
   const stats=scheds.map(s=>{
     const sv=votes[s.id]||{};
-    const yesList=roster.filter(m=>sv[m.id]==="yes");
-    const noList =roster.filter(m=>sv[m.id]==="no");
-    return{id:s.id,label:s.date.slice(0,5),yes:yesList.length,no:noList.length,yesList,noList};
+    return{id:s.id,label:s.date.slice(0,5),
+      yes:roster.filter(m=>sv[m.id]==="yes").length,
+      no:roster.filter(m=>sv[m.id]==="no").length};
   });
   const maxVal=Math.max(roster.length,1);
   const avg=roster.length?Math.round(stats.reduce((a,s)=>a+s.yes,0)/scheds.length):0;
-  const selStat=stats.find(s=>s.id===dTab);
-  const safeTab=scheds.find(s=>s.id===dTab)?dTab:scheds[0]?.id??null;
+  const safeTab=scheds.find(s=>s.id===dTab)?dTab:scheds[0]&&scheds[0].id;
+  const selStat=stats.find(s=>s.id===safeTab);
 
   /* 관리자 */
   const openA=()=>{setAOpen(true);setPw("");setPwErr(false)};
   const closeA=()=>setAOpen(false);
   const submitPw=async()=>{
-    const hash = await sha256(pw);
-    if(hash===ADMIN_PW_HASH){setIsAdmin(true);setEScheds(scheds.map(s=>({...s})));setPwErr(false);}
+    const hash=await sha256(pw);
+    if(hash===ADMIN_PW_HASH){setIsAdmin(true);setEScheds(scheds.map(s=>Object.assign({},s)));setPwErr(false);}
     else setPwErr(true);
   };
-  const logoutA=()=>{setIsAdmin(false);setAOpen(false)};
-  const updES=(id,f,v)=>setEScheds(p=>p.map(s=>s.id===id?{...s,[f]:v}:s));
-  const addES=()=>setEScheds(p=>[...p,{id:Date.now(),date:"",event:"",closed:false}]);
-  const removeES=id=>setEScheds(p=>p.filter(s=>s.id!==id));
-  const toggleC=id=>setEScheds(p=>p.map(s=>s.id===id?{...s,closed:!s.closed}:s));
   const saveA=()=>{
     const ns=eScheds.filter(s=>s.date.trim());
     db.ref("scheds").set(Object.fromEntries(ns.map(s=>[s.id,s])));
     setAOpen(false);
   };
 
-  /* styles */
-  const tb=k=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:tab===k?700:400,
-    background:tab===k?"#fff":"transparent",color:tab===k?"#3182f6":"#888",
-    border:"none",borderRadius:11,cursor:"pointer",
-    boxShadow:tab===k?"0 1px 4px rgba(0,0,0,0.08)":"none"});
-  const pill=(a,t)=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:a?600:400,
-    background:a?(t==="yes"?"#00b074":"#f45452"):"#f5f6f8",
-    color:a?"#fff":"#888",border:"none",borderRadius:10,cursor:"pointer"});
-  const chip=t=>({fontSize:13,padding:"4px 12px",borderRadius:20,
-    background:t==="yes"?"#e6faf3":"#fff0f0",color:t==="yes"?"#00805a":"#d63031"});
-  const atb=k=>({flex:1,padding:"8px 0",fontSize:13,fontWeight:aView===k?700:400,
-    border:"none",borderRadius:10,cursor:"pointer",
-    background:aView===k?"#3182f6":"#f5f6f8",color:aView===k?"#fff":"#888"});
-  const btnBlue={padding:"12px 0",borderRadius:12,border:"none",background:"#3182f6",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"};
-  const btnGray={padding:"12px 0",borderRadius:12,border:"1px solid rgba(0,0,0,0.1)",background:"#f5f6f8",color:"#555",fontSize:14,fontWeight:600,cursor:"pointer"};
+  /* 스타일 */
+  const BB={padding:"12px 0",borderRadius:12,border:"none",background:"#3182f6",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"};
+  const BG={padding:"12px 0",borderRadius:12,border:"1px solid rgba(0,0,0,0.1)",background:"#f5f6f8",color:"#555",fontSize:14,fontWeight:600,cursor:"pointer"};
+  const chip=t=>({fontSize:13,padding:"4px 12px",borderRadius:20,background:t==="yes"?"#e6faf3":"#fff0f0",color:t==="yes"?"#00805a":"#d63031"});
+  const pill=(a,t)=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:a?600:400,background:a?(t==="yes"?"#00b074":"#f45452"):"#f5f6f8",color:a?"#fff":"#888",border:"none",borderRadius:10,cursor:"pointer"});
+  const tb=k=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:tab===k?700:400,background:tab===k?"#fff":"transparent",color:tab===k?"#3182f6":"#888",border:"none",borderRadius:11,cursor:"pointer",boxShadow:tab===k?"0 1px 4px rgba(0,0,0,0.08)":"none"});
+  const atb=k=>({flex:1,padding:"8px 0",fontSize:13,fontWeight:aView===k?700:400,border:"none",borderRadius:10,cursor:"pointer",background:aView===k?"#3182f6":"#f5f6f8",color:aView===k?"#fff":"#888"});
+
+  /* 오류 */
+  if(dbErr) return h("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",padding:"2rem",textAlign:"center"}},
+    h("p",{style:{fontSize:16,fontWeight:700,color:"#f45452",marginBottom:12}},"연결 오류"),
+    h("p",{style:{fontSize:13,color:"#888",whiteSpace:"pre-line",lineHeight:1.8}},dbErr)
+  );
 
   /* 로딩 */
-  if(dbErr) return e("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",padding:"2rem",textAlign:"center"}},
-    e("p",{style:{fontSize:16,fontWeight:700,color:"#f45452",marginBottom:12}},"연결 오류"),
-    e("p",{style:{fontSize:13,color:"#888",whiteSpace:"pre-line",lineHeight:1.8}},dbErr)
-  );
-  if(!ready) return e("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontSize:15,color:"#aaa"}},"불러오는 중...");
+  if(!ready) return h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontSize:15,color:"#aaa"}},"불러오는 중...");
 
-  /* 인증 화면 */
-  if(authStep!=="done"){
-    const isReg=authStep==="register";
-    const f=isReg?form:loginForm;
-    const setF=isReg?setForm:setLoginForm;
-    return e("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}},
-      e("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
-        e("h1",{style:{fontSize:20,fontWeight:700,marginBottom:6}},"영외체련 인원조사"),
-        e("p",{style:{fontSize:13,color:"#888",marginBottom:24,lineHeight:1.6}},
+  /* 인증 화면 (reg / login) */
+  if(step!=="main"){
+    const isReg=step==="reg";
+    return h("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}},
+      h("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
+        h("h1",{style:{fontSize:20,fontWeight:700,marginBottom:6}},"영외체련 인원조사"),
+        h("p",{style:{fontSize:13,color:"#888",marginBottom:24,lineHeight:1.6}},
           isReg?"처음 방문이신가요? 기수·군번·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
         ["rank","serial","name"].map((field,i)=>
-          e("div",{key:field,style:{marginBottom:10}},
-            e("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","군번","이름"][i]),
-            e("input",{className:"inp",type:"text",
-              placeholder:field==="rank"?"예) 868":"",
-              value:f[field],
-              onChange:ev=>setF(p=>({...p,[field]:ev.target.value})),
-              onKeyDown:ev=>ev.key==="Enter"&&(isReg?handleRegister():handleLogin())
-            })
+          h("div",{key:field,style:{marginBottom:10}},
+            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","군번","이름"][i]),
+            h("input",{className:"inp",type:"text",placeholder:field==="rank"?"예) 868":"",
+              value:form[field],
+              onChange:ev=>setForm(p=>Object.assign({},p,{[field]:ev.target.value})),
+              onKeyDown:ev=>ev.key==="Enter"&&(isReg?doRegister():doLogin())})
           )
         ),
-        authErr&&e("p",{style:{fontSize:13,color:"#f45452",marginBottom:12,whiteSpace:"pre-line"}},authErr),
-        e("button",{onClick:isReg?handleRegister:handleLogin,style:{...btnBlue,width:"100%",marginBottom:12}},
-          isReg?"등록하기":"로그인"),
-        e("button",{onClick:()=>{setAuthErr("");setAuthStep(isReg?"login":"register");},
+        authErr&&h("p",{style:{fontSize:13,color:"#f45452",marginBottom:12,whiteSpace:"pre-line"}},authErr),
+        h("button",{onClick:isReg?doRegister:doLogin,style:Object.assign({},BB,{width:"100%",marginBottom:12})},isReg?"등록하기":"로그인"),
+        h("button",{onClick:()=>{setAuthErr("");setForm({rank:"",serial:"",name:""});setStep(isReg?"login":"reg");},
           style:{width:"100%",background:"none",border:"none",fontSize:13,color:"#3182f6",cursor:"pointer",fontWeight:600}},
           isReg?"이미 등록하셨나요? 본인 확인":"처음 방문이신가요? 등록하기")
       )
@@ -258,112 +228,110 @@ function App(){
   }
 
   /* 메인 화면 */
-  return e("div",{style:{padding:"1.5rem 1.25rem",maxWidth:640,margin:"0 auto"}},
+  return h("div",{style:{padding:"1.5rem 1.25rem",maxWidth:640,margin:"0 auto"}},
 
-    e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"1.5rem"}},
-      e("div",null,
-        e("h1",{style:{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}},"영외체련 인원조사"),
-        e("p",{style:{marginTop:5,fontSize:13,color:"#888",lineHeight:1.65}},
-          "매월 2·4주 축구 고정 / 1·3주 타 종목 예정",e("br"),"투표 마감 : 전 주 일요일 오후 9시")
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"1.5rem"}},
+      h("div",null,
+        h("h1",{style:{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}},"영외체련 인원조사"),
+        h("p",{style:{marginTop:5,fontSize:13,color:"#888",lineHeight:1.65}},
+          "매월 2·4주 축구 고정 / 1·3주 타 종목 예정",h("br"),"투표 마감 : 전 주 일요일 오후 9시")
       ),
-      e("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}},
-        e("button",{onClick:openA,style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,
-          background:isAdmin?"#3182f6":"#f5f6f8",color:isAdmin?"#fff":"#555",
-          border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}},isAdmin?"관리자 모드":"관리자"),
-        e("div",{style:{display:"flex",alignItems:"center",gap:8}},
-          e("span",{style:{fontSize:12,color:"#aaa"}},me.rank+"기 "+me.name),
-          e("button",{onClick:()=>{setAuthStep("login");setAuthErr("");},
+      h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}},
+        h("button",{onClick:openA,style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,background:isAdmin?"#3182f6":"#f5f6f8",color:isAdmin?"#fff":"#555",border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}},isAdmin?"관리자 모드":"관리자"),
+        h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+          h("span",{style:{fontSize:12,color:"#aaa"}},me.rank+"기 "+me.name),
+          h("button",{onClick:()=>{setStep("login");setAuthErr("");setForm({rank:"",serial:"",name:""});},
             style:{fontSize:12,color:"#3182f6",background:"none",border:"none",cursor:"pointer",fontWeight:600,padding:0}},"로그아웃")
         )
       )
     ),
 
-    e("div",{style:{display:"flex",marginBottom:"1.5rem",background:"#eef0f3",borderRadius:14,padding:4}},
-      e("button",{style:tb("vote"),onClick:()=>setTab("vote")},"투표"),
-      e("button",{style:tb("dashboard"),onClick:()=>setTab("dashboard")},"현황")
+    h("div",{style:{display:"flex",marginBottom:"1.5rem",background:"#eef0f3",borderRadius:14,padding:4}},
+      h("button",{style:tb("vote"),onClick:()=>setTab("vote")},"투표"),
+      h("button",{style:tb("dashboard"),onClick:()=>setTab("dashboard")},"현황")
     ),
 
-    /* 투표 */
-    tab==="vote"&&e("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+    /* 투표 탭 */
+    tab==="vote"&&h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
       scheds.map(s=>{
         const v=getVote(s.id);
-        return e("div",{key:s.id,className:"card"},
-          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
-            e("div",null,
-              e("p",{style:{fontSize:15,fontWeight:700}},s.date),
-              e("p",{style:{marginTop:4,fontSize:14,fontWeight:600,color:"#3182f6"}},"[ "+s.event+" ]")
+        return h("div",{key:s.id,className:"card"},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
+            h("div",null,
+              h("p",{style:{fontSize:15,fontWeight:700}},s.date),
+              h("p",{style:{marginTop:4,fontSize:14,fontWeight:600,color:"#3182f6"}},"[ "+s.event+" ]")
             ),
-            e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
-              s.closed&&e("span",{style:{fontSize:12,fontWeight:600,padding:"3px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
-              v&&!s.closed&&e("span",{style:chip(v)},v==="yes"?"참석":"불참")
+            h("div",{style:{display:"flex",gap:6,alignItems:"center"}},
+              s.closed&&h("span",{style:{fontSize:12,fontWeight:600,padding:"3px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
+              v&&!s.closed&&h("span",{style:chip(v)},v==="yes"?"참석":"불참")
             )
           ),
           s.closed
-            ? e("div",{style:{padding:"10px 14px",background:"#f5f6f8",borderRadius:10,fontSize:13,color:"#aaa",textAlign:"center"}},"투표가 마감되었습니다")
-            : e("div",{style:{display:"flex",gap:8}},
-                e("button",{style:pill(v==="yes","yes"),onClick:()=>castVote(s.id,"yes")},"참석"),
-                e("button",{style:pill(v==="no","no"),onClick:()=>castVote(s.id,"no")},"불참")
+            ? h("div",{style:{padding:"10px 14px",background:"#f5f6f8",borderRadius:10,fontSize:13,color:"#aaa",textAlign:"center"}},"투표가 마감되었습니다")
+            : h("div",{style:{display:"flex",gap:8}},
+                h("button",{style:pill(v==="yes","yes"),onClick:()=>castVote(s.id,"yes")},"참석"),
+                h("button",{style:pill(v==="no","no"),onClick:()=>castVote(s.id,"no")},"불참")
               )
         );
       })
     ),
 
-    /* 현황 */
-    tab==="dashboard"&&e("div",null,
-      e("div",{style:{display:"flex",gap:10,marginBottom:12}},
+    /* 현황 탭 */
+    tab==="dashboard"&&h("div",null,
+      h("div",{style:{display:"flex",gap:10,marginBottom:12}},
         [{l:"등록 인원",v:roster.length+"명"},{l:"평균 참석",v:avg+"명"}].map(c=>
-          e("div",{key:c.l,style:{background:"#f5f6f8",borderRadius:16,padding:"16px 18px",flex:1}},
-            e("p",{style:{fontSize:12,color:"#888",fontWeight:600}},c.l),
-            e("p",{style:{marginTop:6,fontSize:26,fontWeight:700,letterSpacing:"-0.5px"}},c.v)
+          h("div",{key:c.l,style:{background:"#f5f6f8",borderRadius:16,padding:"16px 18px",flex:1}},
+            h("p",{style:{fontSize:12,color:"#888",fontWeight:600}},c.l),
+            h("p",{style:{marginTop:6,fontSize:26,fontWeight:700,letterSpacing:"-0.5px"}},c.v)
           )
         )
       ),
-      e("div",{className:"card"},
-        e("p",{style:{marginBottom:10,fontSize:15,fontWeight:700}},"일정별 참석 인원"),
-        e("div",{style:{display:"flex",gap:14,marginBottom:10,fontSize:12,color:"#888"}},
-          e("span",{style:{display:"flex",alignItems:"center",gap:5}},e("span",{style:{width:10,height:10,borderRadius:3,background:"#00b074",display:"inline-block"}}),"참석"),
-          e("span",{style:{display:"flex",alignItems:"center",gap:5}},e("span",{style:{width:10,height:10,borderRadius:3,background:"#3182f6",display:"inline-block"}}),"참석(인원충족)"),
-          e("span",{style:{display:"flex",alignItems:"center",gap:5}},e("span",{style:{width:10,height:10,borderRadius:3,background:"#f45452",display:"inline-block"}}),"불참")
+      h("div",{className:"card"},
+        h("p",{style:{marginBottom:10,fontSize:15,fontWeight:700}},"일정별 참석 인원"),
+        h("div",{style:{display:"flex",gap:14,marginBottom:10,fontSize:12,color:"#888"}},
+          h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#00b074",display:"inline-block"}}),"참석"),
+          h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#3182f6",display:"inline-block"}}),"참석(인원충족)"),
+          h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#f45452",display:"inline-block"}}),"불참")
         ),
-        e("p",{style:{fontSize:12,color:"#bbb",marginBottom:8}},"막대를 클릭하면 명단을 확인할 수 있어요"),
-        e(BarChartSVG,{data:stats,maxVal,scheds,selected:safeTab,onSelect:setDTab}),
-        stats.some(d=>{const s=scheds.find(x=>x.id===d.id);return s?.event==="축구"&&d.yes>=22})&&
-          e("div",{style:{marginTop:10,padding:"8px 14px",background:"#e8f0fe",borderRadius:10,display:"flex",alignItems:"center",gap:8}},
-            e("span",{style:{fontSize:13,color:"#1a56db",fontWeight:600}},"인원 충족"),
-            e("span",{style:{fontSize:12,color:"#3d6fd4"}},"축구 22명 이상 참석 예정인 일정이 있습니다")
+        h("p",{style:{fontSize:12,color:"#bbb",marginBottom:8}},"막대를 클릭하면 명단을 확인할 수 있어요"),
+        h(BarChart,{data:stats,maxVal,scheds,sel:safeTab,onSel:setDTab}),
+        stats.some(d=>{const s=scheds.find(x=>x.id===d.id);return s&&s.event==="축구"&&d.yes>=22})&&
+          h("div",{style:{marginTop:10,padding:"8px 14px",background:"#e8f0fe",borderRadius:10,display:"flex",alignItems:"center",gap:8}},
+            h("span",{style:{fontSize:13,color:"#1a56db",fontWeight:600}},"인원 충족"),
+            h("span",{style:{fontSize:12,color:"#3d6fd4"}},"축구 22명 이상 참석 예정인 일정이 있습니다")
           )
       ),
       selStat&&(()=>{
         const s=scheds.find(x=>x.id===safeTab);
         if(!s)return null;
         const full=s.event==="축구"&&selStat.yes>=22;
-        return e("div",{className:"card"},
-          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
-            e("div",null,
-              e("p",{style:{fontSize:15,fontWeight:700}},s.date+" · "+s.event),
-              e("div",{style:{display:"flex",gap:10,marginTop:4}},
-                e("span",{style:{fontSize:13,color:"#00805a",fontWeight:600}},"참석 "+selStat.yes+"명"),
-                e("span",{style:{fontSize:13,color:"#d63031",fontWeight:600}},"불참 "+selStat.no+"명"),
-                e("span",{style:{fontSize:13,color:"#bbb"}},"미투표 "+(roster.length-selStat.yes-selStat.no)+"명")
+        return h("div",{className:"card"},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+            h("div",null,
+              h("p",{style:{fontSize:15,fontWeight:700}},s.date+" · "+s.event),
+              h("div",{style:{display:"flex",gap:10,marginTop:4}},
+                h("span",{style:{fontSize:13,color:"#00805a",fontWeight:600}},"참석 "+selStat.yes+"명"),
+                h("span",{style:{fontSize:13,color:"#d63031",fontWeight:600}},"불참 "+selStat.no+"명"),
+                h("span",{style:{fontSize:13,color:"#bbb"}},"미투표 "+(roster.length-selStat.yes-selStat.no)+"명")
               )
             ),
-            e("div",{style:{display:"flex",gap:6}},
-              s.closed&&e("span",{style:{fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
-              full&&e("span",{style:{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,background:"#e8f0fe",color:"#1a56db"}},"인원 충족")
+            h("div",{style:{display:"flex",gap:6}},
+              s.closed&&h("span",{style:{fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
+              full&&h("span",{style:{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,background:"#e8f0fe",color:"#1a56db"}},"인원 충족")
             )
           ),
-          e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+          h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
             roster.map(m=>{
-              const v=(votes[safeTab]||{})[m.id]??null;
-              return e("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
-                e("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                  e("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
-                  e("div",null,
-                    e("p",{style:{fontSize:14,fontWeight:600}},m.name),
-                    m.rank&&e("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
+              const v=(votes[safeTab]||{})[m.id]||null;
+              return h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
+                h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                  h("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
+                  h("div",null,
+                    h("p",{style:{fontSize:14,fontWeight:600}},m.name),
+                    m.rank&&h("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
                   )
                 ),
-                e("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},v==="yes"?"참석":v==="no"?"불참":"미투표")
+                h("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},v==="yes"?"참석":v==="no"?"불참":"미투표")
               );
             })
           )
@@ -372,66 +340,68 @@ function App(){
     ),
 
     /* 관리자 모달 */
-    aOpen&&e("div",{className:"overlay",onClick:ev=>{if(ev.target===ev.currentTarget)closeA()}},
-      e("div",{className:"mbox"},
+    aOpen&&h("div",{className:"overlay",onClick:ev=>{if(ev.target===ev.currentTarget)closeA()}},
+      h("div",{className:"mbox"},
         !isAdmin
-          ? e("div",null,
-              e("p",{style:{marginBottom:20,fontSize:18,fontWeight:700}},"관리자 로그인"),
-              e("input",{type:"password",className:"inp",placeholder:"비밀번호 입력",value:pw,
+          ? h("div",null,
+              h("p",{style:{marginBottom:20,fontSize:18,fontWeight:700}},"관리자 로그인"),
+              h("input",{type:"password",className:"inp",placeholder:"비밀번호 입력",value:pw,
                 onChange:ev=>setPw(ev.target.value),onKeyDown:ev=>ev.key==="Enter"&&submitPw(),
-                style:{marginBottom:8,borderColor:pwErr?"#f45452":undefined}}),
-              pwErr&&e("p",{style:{marginBottom:12,fontSize:13,color:"#f45452"}},"비밀번호가 올바르지 않습니다"),
-              e("div",{style:{display:"flex",gap:8}},
-                e("button",{onClick:closeA,style:{...btnGray,flex:1}},"취소"),
-                e("button",{onClick:submitPw,style:{...btnBlue,flex:1}},"확인")
+                style:{marginBottom:8,borderColor:pwErr?"#f45452":""}}),
+              pwErr&&h("p",{style:{marginBottom:12,fontSize:13,color:"#f45452"}},"비밀번호가 올바르지 않습니다"),
+              h("div",{style:{display:"flex",gap:8}},
+                h("button",{onClick:closeA,style:Object.assign({},BG,{flex:1})},"취소"),
+                h("button",{onClick:submitPw,style:Object.assign({},BB,{flex:1})},"확인")
               )
             )
-          : e("div",null,
-              e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
-                e("p",{style:{fontSize:18,fontWeight:700}},"관리자 설정"),
-                e("button",{onClick:logoutA,style:{fontSize:13,color:"#f45452",background:"none",border:"none",cursor:"pointer",fontWeight:600}},"로그아웃")
+          : h("div",null,
+              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
+                h("p",{style:{fontSize:18,fontWeight:700}},"관리자 설정"),
+                h("button",{onClick:()=>{setIsAdmin(false);setAOpen(false);},style:{fontSize:13,color:"#f45452",background:"none",border:"none",cursor:"pointer",fontWeight:600}},"로그아웃")
               ),
-              e("div",{style:{display:"flex",gap:6,marginBottom:18}},
-                e("button",{style:atb("schedules"),onClick:()=>setAView("schedules")},"일정 관리"),
-                e("button",{style:atb("votes"),onClick:()=>setAView("votes")},"투표 마감")
+              h("div",{style:{display:"flex",gap:6,marginBottom:18}},
+                h("button",{style:atb("schedules"),onClick:()=>setAView("schedules")},"일정 관리"),
+                h("button",{style:atb("votes"),onClick:()=>setAView("votes")},"투표 마감")
               ),
-              aView==="schedules"&&e("div",null,
-                e("div",{style:{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #eee"}},
-                  e("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"날짜"),
-                  e("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"종목"),
-                  e("span",{style:{width:32}})
+              aView==="schedules"&&h("div",null,
+                h("div",{style:{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #eee"}},
+                  h("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"날짜"),
+                  h("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"종목"),
+                  h("span",{style:{width:32}})
                 ),
-                e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12}},
-                  eScheds.map(s=>e("div",{key:s.id,style:{display:"flex",gap:6,alignItems:"center"}},
-                    e("input",{className:"inp",placeholder:"3월 20일 (금)",value:s.date,
-                      onChange:ev=>updES(s.id,"date",ev.target.value),style:{flex:1,fontSize:13}}),
-                    e("input",{className:"inp",placeholder:"종목",value:s.event,
-                      onChange:ev=>updES(s.id,"event",ev.target.value),style:{flex:1,fontSize:13}}),
-                    e("button",{onClick:()=>removeES(s.id),style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
+                h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12}},
+                  eScheds.map(s=>h("div",{key:s.id,style:{display:"flex",gap:6,alignItems:"center"}},
+                    h("input",{className:"inp",placeholder:"3월 20일 (금)",value:s.date,style:{flex:1,fontSize:13},
+                      onChange:ev=>setEScheds(p=>p.map(x=>x.id===s.id?Object.assign({},x,{date:ev.target.value}):x))}),
+                    h("input",{className:"inp",placeholder:"종목",value:s.event,style:{flex:1,fontSize:13},
+                      onChange:ev=>setEScheds(p=>p.map(x=>x.id===s.id?Object.assign({},x,{event:ev.target.value}):x))}),
+                    h("button",{onClick:()=>setEScheds(p=>p.filter(x=>x.id!==s.id)),
+                      style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
                   ))
                 ),
-                e("button",{onClick:addES,style:{width:"100%",padding:"10px 0",borderRadius:12,border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 일정 추가"),
-                e("div",{style:{display:"flex",gap:8}},
-                  e("button",{onClick:closeA,style:{...btnGray,flex:1}},"취소"),
-                  e("button",{onClick:saveA,style:{...btnBlue,flex:1}},"저장")
+                h("button",{onClick:()=>setEScheds(p=>[...p,{id:Date.now(),date:"",event:"",closed:false}]),
+                  style:{width:"100%",padding:"10px 0",borderRadius:12,border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 일정 추가"),
+                h("div",{style:{display:"flex",gap:8}},
+                  h("button",{onClick:closeA,style:Object.assign({},BG,{flex:1})},"취소"),
+                  h("button",{onClick:saveA,style:Object.assign({},BB,{flex:1})},"저장")
                 )
               ),
-              aView==="votes"&&e("div",null,
-                e("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"일정별로 투표를 마감하거나 다시 열 수 있어요"),
-                e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:16}},
-                  eScheds.map(s=>e("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
-                    e("div",null,
-                      e("p",{style:{fontSize:14,fontWeight:600}},s.date||"날짜 미설정"),
-                      e("p",{style:{marginTop:2,fontSize:12,color:"#888"}},s.event||"종목 미설정")
+              aView==="votes"&&h("div",null,
+                h("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"일정별로 투표를 마감하거나 다시 열 수 있어요"),
+                h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:16}},
+                  eScheds.map(s=>h("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
+                    h("div",null,
+                      h("p",{style:{fontSize:14,fontWeight:600}},s.date||"날짜 미설정"),
+                      h("p",{style:{marginTop:2,fontSize:12,color:"#888"}},s.event||"종목 미설정")
                     ),
-                    e("button",{onClick:()=>toggleC(s.id),style:{
-                      padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",
-                      background:s.closed?"#e6faf3":"#fff0f0",color:s.closed?"#00805a":"#f45452"}},s.closed?"열기":"마감")
+                    h("button",{onClick:()=>setEScheds(p=>p.map(x=>x.id===s.id?Object.assign({},x,{closed:!x.closed}):x)),
+                      style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",
+                        background:s.closed?"#e6faf3":"#fff0f0",color:s.closed?"#00805a":"#f45452"}},s.closed?"열기":"마감")
                   ))
                 ),
-                e("div",{style:{display:"flex",gap:8}},
-                  e("button",{onClick:closeA,style:{...btnGray,flex:1}},"취소"),
-                  e("button",{onClick:saveA,style:{...btnBlue,flex:1}},"저장")
+                h("div",{style:{display:"flex",gap:8}},
+                  h("button",{onClick:closeA,style:Object.assign({},BG,{flex:1})},"취소"),
+                  h("button",{onClick:saveA,style:Object.assign({},BB,{flex:1})},"저장")
                 )
               )
             )
