@@ -36,10 +36,16 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const {useState,useEffect,useRef} = React;
+const {useState,useEffect} = React;
 const e = React.createElement;
 
-const ADMIN_PW = "0124";
+// 관리자 비밀번호 해시 (해시 생성기로 만든 값으로 교체하세요)
+const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
+
+async function sha256(str){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
 const LS_ME    = "exercise_me_v4";
 const DEF_SCHEDS = [
   {id:1,date:"3월 20일 (금)",event:"축구",closed:false},
@@ -183,7 +189,7 @@ function App(){
   const closeA=()=>setAOpen(false);
   const submitPw=async()=>{
     const hash = await sha256(pw);
-    if(hash==="91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d"){setIsAdmin(true);setEScheds(scheds.map(s=>({...s})));setPwErr(false);}
+    if(hash===ADMIN_PW_HASH){setIsAdmin(true);setEScheds(scheds.map(s=>({...s})));setPwErr(false);}
     else setPwErr(true);
   };
   const logoutA=()=>{setIsAdmin(false);setAOpen(false)};
