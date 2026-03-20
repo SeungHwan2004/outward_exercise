@@ -24,7 +24,7 @@ input,select,button{font-family:inherit}
 const {useState,useEffect} = React;
 const e = React.createElement;
 
-const ADMIN_PW = "0124";
+const ADMIN_PW = "secretplz4";
 const LS_SCHEDS = "exercise_scheds_v3";
 const LS_ROSTER = "exercise_roster_v3"; // 전체 인원 명단 (관리자 등록)
 const LS_VOTES  = "exercise_votes_v3";  // 투표 데이터
@@ -230,7 +230,10 @@ function App(){
         e("button",{onClick:openA,style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,
           background:isAdmin?"#3182f6":"#f5f6f8",color:isAdmin?"#fff":"#555",
           border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}},isAdmin?"관리자 모드":"관리자"),
-        e("span",{style:{fontSize:12,color:"#aaa"}},me.rank+"기 "+me.name)
+        e("div",{style:{display:"flex",alignItems:"center",gap:8}},
+          e("span",{style:{fontSize:12,color:"#aaa"}},me.rank+"기 "+me.name),
+          e("button",{onClick:()=>setAuthStep("login"),style:{fontSize:12,color:"#3182f6",background:"none",border:"none",cursor:"pointer",fontWeight:600,padding:0}},"로그아웃")
+        )
       )
     ),
 
@@ -251,7 +254,7 @@ function App(){
                 e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
                   e("div",null,
                     e("p",{style:{fontSize:15,fontWeight:700}},s.date),
-                    e("p",{style:{marginTop:3,fontSize:13,color:"#888"}},s.event)
+                    e("p",{style:{marginTop:4,fontSize:14,fontWeight:600,color:"#3182f6"}},"[ "+s.event+" ]")
                   ),
                   e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
                     s.closed&&e("span",{style:{fontSize:12,fontWeight:600,padding:"3px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
