@@ -21,12 +21,16 @@ input,select,button{font-family:inherit}
 <body>
 <div id="root"></div>
 <script>
-const {useState,useMemo,useEffect} = React;
+const {useState,useEffect} = React;
 const e = React.createElement;
 
-const ADMIN_PW="봤어도모른척부탁해요", LS="exercise_v3";
+const ADMIN_PW = "알아도모른척해주세요";
+const LS_SCHEDS = "exercise_scheds_v3";
+const LS_ROSTER = "exercise_roster_v3"; // 전체 인원 명단 (관리자 등록)
+const LS_VOTES  = "exercise_votes_v3";  // 투표 데이터
+const LS_ME     = "exercise_me_v3";     // 이 기기의 사용자 정보
 
-const DEF_SCHEDS=[
+const DEF_SCHEDS = [
   {id:1,date:"3월 20일 (금)",event:"축구",closed:false},
   {id:2,date:"4월 3일 (금)",event:"축구",closed:false},
   {id:3,date:"4월 17일 (금)",event:"배구",closed:false},
@@ -34,89 +38,131 @@ const DEF_SCHEDS=[
   {id:5,date:"5월 15일 (금)",event:"족구",closed:false},
 ];
 
-function load(){try{const r=localStorage.getItem(LS);return r?JSON.parse(r):null}catch{return null}}
-function save(s){try{localStorage.setItem(LS,JSON.stringify(s))}catch{}}
+function ls(key,def){try{const r=localStorage.getItem(key);return r?JSON.parse(r):def}catch{return def}}
+function lsSave(key,val){try{localStorage.setItem(key,JSON.stringify(val))}catch{}}
 
-/* ── SVG 막대 차트 ── */
-function BarChartSVG({data,maxVal,scheds}){
+/* ── SVG 차트 ── */
+function BarChartSVG({data,maxVal,scheds,selected,onSelect}){
   const W=340,H=160,PL=28,PB=24,PT=10,PR=10;
-  const cW=W-PL-PR, cH=H-PB-PT;
-  const n=data.length, gW=cW/n, bW=Math.min(gW*0.28,22);
-  const yScale=v=>cH-(v/Math.max(maxVal,1))*cH;
-  const yTicks=[0,Math.ceil(maxVal/2),maxVal].filter((v,i,a)=>a.indexOf(v)===i);
-  return e("svg",{viewBox:"0 0 "+W+" "+H,style:{width:"100%",height:"auto"}},
-    yTicks.map(v=>e("g",{key:v},
-      e("line",{x1:PL,x2:W-PR,y1:PT+yScale(v),y2:PT+yScale(v),stroke:"rgba(0,0,0,0.06)",strokeWidth:1}),
-      e("text",{x:PL-4,y:PT+yScale(v)+4,textAnchor:"end",fontSize:10,fill:"#bbb"},v)
+  const cW=W-PL-PR,cH=H-PB-PT;
+  const n=data.length,gW=cW/n,bW=Math.min(gW*0.28,22);
+  const ys=v=>cH-(v/Math.max(maxVal,1))*cH;
+  const ticks=[0,Math.ceil(maxVal/2),maxVal].filter((v,i,a)=>a.indexOf(v)===i);
+  return e("svg",{viewBox:"0 0 "+W+" "+H,style:{width:"100%",height:"auto",cursor:"pointer"}},
+    ticks.map(v=>e("g",{key:v},
+      e("line",{x1:PL,x2:W-PR,y1:PT+ys(v),y2:PT+ys(v),stroke:"rgba(0,0,0,0.06)",strokeWidth:1}),
+      e("text",{x:PL-4,y:PT+ys(v)+4,textAnchor:"end",fontSize:10,fill:"#bbb"},v)
     )),
     data.map((d,i)=>{
-      const sched=scheds.find(s=>s.id===d.id);
-      const full=sched?.event==="축구"&&d.yes>=22;
+      const s=scheds.find(x=>x.id===d.id);
+      const full=s?.event==="축구"&&d.yes>=22;
       const yesColor=full?"#3182f6":"#00b074";
       const cx=PL+gW*i+gW/2;
-      return e("g",{key:d.id},
-        e("rect",{x:cx-bW-2,y:PT+yScale(d.yes),width:bW,height:Math.max((d.yes/Math.max(maxVal,1))*cH,2),fill:yesColor,rx:4}),
-        e("rect",{x:cx+2,y:PT+yScale(d.no),width:bW,height:Math.max((d.no/Math.max(maxVal,1))*cH,2),fill:"#f45452",rx:4}),
-        e("text",{x:cx,y:H-8,textAnchor:"middle",fontSize:10,fill:"#bbb"},d.label)
+      const isSel=selected===d.id;
+      return e("g",{key:d.id,onClick:()=>onSelect(d.id),style:{cursor:"pointer"}},
+        isSel&&e("rect",{x:PL+gW*i+2,y:PT,width:gW-4,height:cH,fill:"rgba(49,130,246,0.07)",rx:6}),
+        e("rect",{x:cx-bW-2,y:PT+ys(d.yes),width:bW,height:Math.max((d.yes/Math.max(maxVal,1))*cH,2),fill:yesColor,rx:4}),
+        e("rect",{x:cx+2,y:PT+ys(d.no),width:bW,height:Math.max((d.no/Math.max(maxVal,1))*cH,2),fill:"#f45452",rx:4}),
+        e("text",{x:cx,y:H-8,textAnchor:"middle",fontSize:10,fill:isSel?"#3182f6":"#bbb",fontWeight:isSel?"700":"400"},d.label)
       );
     })
   );
 }
 
+/* ── 메인 앱 ── */
 function App(){
-  const saved=load();
-  const [tab,setTab]             = useState("members");
-  const [scheds,setScheds]       = useState(saved?.scheds||DEF_SCHEDS);
-  const [members,setMembers]     = useState(saved?.members||[{id:1,rank:"",name:""}]);
-  const [confirmed,setConfirmed] = useState(saved?.confirmed||false);
-  const [votes,setVotes]         = useState(saved?.votes||{});
-  const [myId,setMyId]           = useState("");
-  const [dTab,setDTab]           = useState(DEF_SCHEDS[0].id);
-  const [aOpen,setAOpen]         = useState(false);
-  const [pw,setPw]               = useState("");
-  const [pwErr,setPwErr]         = useState(false);
-  const [isAdmin,setIsAdmin]     = useState(false);
-  const [eScheds,setEScheds]     = useState([]);
-  const [aView,setAView]         = useState("schedules");
+  /* 전역 상태 */
+  const [scheds,setScheds]   = useState(()=>ls(LS_SCHEDS,DEF_SCHEDS));
+  const [roster,setRoster]   = useState(()=>ls(LS_ROSTER,[]));
+  // me: {id, rank, serial, name} — 이 기기 사용자. serial은 군번(인증용만)
+  const [me,setMe]           = useState(()=>ls(LS_ME,null));
+  const [votes,setVotes]     = useState(()=>ls(LS_VOTES,{}));
 
-  const valid=members.filter(m=>m.name.trim());
+  const [tab,setTab]         = useState("vote");
+  const [dTab,setDTab]       = useState(scheds[0]?.id??null);
 
-  const safeTab = scheds.find(s=>s.id===dTab) ? dTab : (scheds[0]?.id??null);
+  /* 사용자 등록/로그인 관련 */
+  const [authStep,setAuthStep] = useState(me?"done":"register"); // register | login | done
+  const [form,setForm]         = useState({rank:"",serial:"",name:""});
+  const [loginForm,setLoginForm] = useState({rank:"",serial:"",name:""});
+  const [authErr,setAuthErr]   = useState("");
 
-  useEffect(()=>save({scheds,members,confirmed,votes}),[scheds,members,confirmed,votes]);
+  /* 관리자 */
+  const [aOpen,setAOpen]     = useState(false);
+  const [pw,setPw]           = useState("");
+  const [pwErr,setPwErr]     = useState(false);
+  const [isAdmin,setIsAdmin] = useState(false);
+  const [eScheds,setEScheds] = useState([]);
+  const [eRoster,setERoster] = useState([]);
+  const [aView,setAView]     = useState("schedules");
 
-  const addM    = ()=>setMembers(p=>[...p,{id:Date.now(),rank:"",name:""}]);
-  const removeM = id=>{if(!confirmed)setMembers(p=>p.filter(m=>m.id!==id))};
-  const updM    = (id,f,v)=>{if(!confirmed)setMembers(p=>p.map(m=>m.id===id?{...m,[f]:v}:m))};
-  const confirm = ()=>{if(!valid.length)return;setConfirmed(true);setTab("vote")};
-  const unconfirm=()=>{setConfirmed(false);setMyId("")};
+  useEffect(()=>lsSave(LS_SCHEDS,scheds),[scheds]);
+  useEffect(()=>lsSave(LS_ROSTER,roster),[roster]);
+  useEffect(()=>lsSave(LS_VOTES,votes),[votes]);
+  useEffect(()=>lsSave(LS_ME,me),[me]);
 
-  const castVote=(sid,mid,val)=>{
-    if(scheds.find(s=>s.id===sid)?.closed)return;
-    setVotes(p=>({...p,[sid]:{...(p[sid]||{}),[mid]:val}}));
+  /* 인증 - 최초 등록 */
+  const handleRegister = ()=>{
+    const {rank,serial,name}=form;
+    if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
+    // 로스터에서 일치하는 인원 확인
+    const matched = roster.find(r=>r.rank===rank.trim()&&r.serial===serial.trim()&&r.name===name.trim());
+    if(!matched){setAuthErr("등록된 정보와 일치하지 않습니다.\n관리자에게 문의하세요.");return;}
+    // 이미 다른 기기에서 등록했는지 확인 (votes에 id 존재 여부로 판별 불가 — 단순히 me 저장)
+    setMe({id:matched.id,rank:matched.rank,name:matched.name,serial:matched.serial});
+    setAuthErr("");setAuthStep("done");setTab("vote");
   };
-  const getVote =(sid,mid)=>(votes[sid]||{})[mid]??null;
-  const voted   = sid=>{const sv=votes[sid]||{};return valid.filter(m=>sv[m.id]!=null).length};
 
-  const stats=useMemo(()=>scheds.map(s=>{
+  /* 재접속 시 본인 확인 */
+  const handleLogin = ()=>{
+    const {rank,serial,name}=loginForm;
+    if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
+    if(me&&(me.rank!==rank.trim()||me.serial!==serial.trim()||me.name!==name.trim())){
+      setAuthErr("저장된 정보와 일치하지 않습니다.");return;
+    }
+    setAuthErr("");setAuthStep("done");
+  };
+
+  /* 투표 */
+  const castVote=(sid,val)=>{
+    if(!me||scheds.find(s=>s.id===sid)?.closed)return;
+    setVotes(p=>({...p,[sid]:{...(p[sid]||{}),[me.id]:val}}));
+  };
+  const getVote=sid=>(votes[sid]||{})[me?.id]??null;
+
+  /* 현황 계산 */
+  const stats=scheds.map(s=>{
     const sv=votes[s.id]||{};
-    return{id:s.id,label:s.date.slice(0,5),
-      yes:valid.filter(m=>sv[m.id]==="yes").length,
-      no:valid.filter(m=>sv[m.id]==="no").length};
-  }),[votes,valid,scheds]);
+    const yesList=roster.filter(m=>sv[m.id]==="yes");
+    const noList =roster.filter(m=>sv[m.id]==="no");
+    return{id:s.id,label:s.date.slice(0,5),yes:yesList.length,no:noList.length,yesList,noList};
+  });
+  const maxVal=Math.max(roster.length,1);
+  const avg=roster.length?Math.round(stats.reduce((a,s)=>a+s.yes,0)/scheds.length):0;
+  const selStat=stats.find(s=>s.id===dTab);
 
-  const avg=valid.length?Math.round(stats.reduce((a,s)=>a+s.yes,0)/scheds.length):0;
-  const maxVal=Math.max(valid.length,1);
-
-  const openA  = ()=>{setAOpen(true);setPw("");setPwErr(false)};
-  const closeA = ()=>setAOpen(false);
-  const submitPw=()=>{if(pw===ADMIN_PW){setIsAdmin(true);setEScheds(scheds.map(s=>({...s})));setPwErr(false)}else setPwErr(true)};
-  const logoutA= ()=>{setIsAdmin(false);setAOpen(false)};
-  const updES  = (id,f,v)=>setEScheds(p=>p.map(s=>s.id===id?{...s,[f]:v}:s));
-  const addES  = ()=>setEScheds(p=>[...p,{id:Date.now(),date:"",event:"",closed:false}]);
-  const removeES=(id)=>setEScheds(p=>p.filter(s=>s.id!==id));
-  const toggleC= id=>setEScheds(p=>p.map(s=>s.id===id?{...s,closed:!s.closed}:s));
-  const saveA  = ()=>{const n=eScheds.filter(s=>s.date.trim());setScheds(n);setDTab(n[0]?.id??null);setAOpen(false)};
+  /* 관리자 */
+  const openA=()=>{setAOpen(true);setPw("");setPwErr(false)};
+  const closeA=()=>setAOpen(false);
+  const submitPw=()=>{
+    if(pw===ADMIN_PW){setIsAdmin(true);setEScheds(scheds.map(s=>({...s})));setERoster(roster.map(r=>({...r})));setPwErr(false);}
+    else setPwErr(true);
+  };
+  const logoutA=()=>{setIsAdmin(false);setAOpen(false)};
+  const saveA=()=>{
+    const ns=eScheds.filter(s=>s.date.trim());
+    const nr=eRoster.filter(r=>r.name.trim()&&r.serial.trim());
+    setScheds(ns);setRoster(nr);
+    if(!ns.find(s=>s.id===dTab))setDTab(ns[0]?.id??null);
+    setAOpen(false);
+  };
+  const updES=(id,f,v)=>setEScheds(p=>p.map(s=>s.id===id?{...s,[f]:v}:s));
+  const addES=()=>setEScheds(p=>[...p,{id:Date.now(),date:"",event:"",closed:false}]);
+  const removeES=id=>setEScheds(p=>p.filter(s=>s.id!==id));
+  const toggleC=id=>setEScheds(p=>p.map(s=>s.id===id?{...s,closed:!s.closed}:s));
+  const updER=(id,f,v)=>setERoster(p=>p.map(r=>r.id===id?{...r,[f]:v}:r));
+  const addER=()=>setERoster(p=>[...p,{id:Date.now(),rank:"",serial:"",name:""}]);
+  const removeER=id=>setERoster(p=>p.filter(r=>r.id!==id));
 
   /* style helpers */
   const tb=k=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:tab===k?700:400,
@@ -134,168 +180,167 @@ function App(){
   const btnBlue={padding:"12px 0",borderRadius:12,border:"none",background:"#3182f6",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"};
   const btnGray={padding:"12px 0",borderRadius:12,border:"1px solid rgba(0,0,0,0.1)",background:"#f5f6f8",color:"#555",fontSize:14,fontWeight:600,cursor:"pointer"};
 
+  /* ── 인증 화면 ── */
+  const renderAuth=()=>{
+    const isReg = authStep==="register";
+    const f = isReg?form:loginForm;
+    const setF = isReg?setForm:setLoginForm;
+    return e("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}},
+      e("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
+        e("h1",{style:{fontSize:20,fontWeight:700,marginBottom:6}},"영외체련 인원조사"),
+        e("p",{style:{fontSize:13,color:"#888",marginBottom:24,lineHeight:1.6}},
+          isReg?"처음 방문이신가요? 기수·군번·이름을 입력해 주세요.":"다시 오셨나요? 등록하신 정보로 확인해 주세요."),
+        ["rank","serial","name"].map((field,i)=>
+          e("div",{key:field,style:{marginBottom:10}},
+            e("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},
+              ["기수","군번","이름"][i]),
+            e("input",{className:"inp",
+              type:field==="serial"?"password":"text",
+              placeholder:[field==="rank"?"예) 3":"","",""][i],
+              value:f[field],
+              onChange:ev=>setF(p=>({...p,[field]:ev.target.value})),
+              onKeyDown:ev=>ev.key==="Enter"&&(isReg?handleRegister():handleLogin())
+            })
+          )
+        ),
+        authErr&&e("p",{style:{fontSize:13,color:"#f45452",marginBottom:12,whiteSpace:"pre-line"}},authErr),
+        e("button",{onClick:isReg?handleRegister:handleLogin,style:{...btnBlue,width:"100%",marginBottom:12}},
+          isReg?"확인":"로그인"),
+        e("button",{onClick:()=>{setAuthErr("");setAuthStep(isReg?"login":"register");},
+          style:{width:"100%",background:"none",border:"none",fontSize:13,color:"#3182f6",cursor:"pointer",fontWeight:600}},
+          isReg?"이미 등록하셨나요? 본인 확인":"처음 방문이신가요? 등록하기")
+      )
+    );
+  };
+
+  if(authStep!=="done") return renderAuth();
+
+  /* ── 메인 화면 ── */
   return e("div",{style:{padding:"1.5rem 1.25rem",maxWidth:640,margin:"0 auto"}},
 
     /* Header */
-    e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"2rem"}},
+    e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"1.5rem"}},
       e("div",null,
         e("h1",{style:{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}},"영외체련 인원조사"),
         e("p",{style:{marginTop:5,fontSize:13,color:"#888",lineHeight:1.65}},
           "매월 2·4주 축구 고정 / 1·3주 타 종목 예정",e("br"),"투표 마감 : 전 주 일요일 오후 9시")
       ),
-      e("button",{onClick:openA,style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,flexShrink:0,
-        background:isAdmin?"#3182f6":"#f5f6f8",color:isAdmin?"#fff":"#555",
-        border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}},isAdmin?"관리자 모드":"관리자")
+      e("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}},
+        e("button",{onClick:openA,style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,
+          background:isAdmin?"#3182f6":"#f5f6f8",color:isAdmin?"#fff":"#555",
+          border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}},isAdmin?"관리자 모드":"관리자"),
+        e("span",{style:{fontSize:12,color:"#aaa"}},me.rank+"기 "+me.name)
+      )
     ),
 
     /* Tabs */
     e("div",{style:{display:"flex",marginBottom:"1.5rem",background:"#eef0f3",borderRadius:14,padding:4}},
-      e("button",{style:tb("members"),onClick:()=>setTab("members")},"인원 관리"),
       e("button",{style:tb("vote"),onClick:()=>setTab("vote")},"투표"),
       e("button",{style:tb("dashboard"),onClick:()=>setTab("dashboard")},"현황")
     ),
 
-    /* ── 인원 관리 ── */
-    tab==="members" && e("div",{className:"card"},
-      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
-        e("span",{style:{fontSize:16,fontWeight:700}},"인원 명단"),
-        e("span",{style:{fontSize:13,color:"#888"}},valid.length+"명")
-      ),
-      confirmed && e("div",{style:{marginBottom:14,padding:"10px 14px",background:"#e6faf3",borderRadius:12,display:"flex",justifyContent:"space-between",alignItems:"center"}},
-        e("span",{style:{fontSize:13,color:"#00805a",fontWeight:600}},"명단이 확인되었습니다"),
-        e("button",{onClick:unconfirm,style:{fontSize:13,color:"#3182f6",background:"none",border:"none",cursor:"pointer",fontWeight:600}},"수정하기")
-      ),
-      e("div",{style:{display:"flex",gap:8,marginBottom:10,paddingBottom:8,borderBottom:"1px solid #eee"}},
-        e("span",{style:{fontSize:12,color:"#888",width:72,fontWeight:600}},"기수"),
-        e("span",{style:{fontSize:12,color:"#888",flex:1,fontWeight:600}},"이름"),
-        !confirmed && e("span",{style:{width:32}})
-      ),
-      e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:14}},
-        members.map(m=>e("div",{key:m.id,style:{display:"flex",gap:8,alignItems:"center"}},
-          e("input",{className:"inp",placeholder:"기수",value:m.rank,disabled:confirmed,
-            onChange:ev=>updM(m.id,"rank",ev.target.value),style:{width:72,flexShrink:0}}),
-          e("input",{className:"inp",placeholder:"이름",value:m.name,disabled:confirmed,
-            onChange:ev=>updM(m.id,"name",ev.target.value),style:{flex:1}}),
-          !confirmed && e("button",{onClick:()=>removeM(m.id),
-            style:{width:32,height:38,borderRadius:10,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:18}},"×")
-        ))
-      ),
-      !confirmed && e("button",{onClick:addM,style:{width:"100%",padding:"11px 0",borderRadius:12,
-        border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 인원 추가"),
-      !confirmed && e("button",{onClick:confirm,disabled:!valid.length,style:{width:"100%",padding:"13px 0",borderRadius:14,border:"none",
-        background:valid.length?"#3182f6":"#e5e8eb",color:valid.length?"#fff":"#aaa",
-        fontSize:15,fontWeight:700,cursor:valid.length?"pointer":"default"}},"확인")
-    ),
-
     /* ── 투표 ── */
     tab==="vote" && e("div",null,
-      !confirmed
-        ? e("div",{className:"card",style:{textAlign:"center",padding:"2.5rem",color:"#888",fontSize:14}},"인원 관리 탭에서 명단을 입력하고 확인해 주세요")
-        : e("div",null,
-            e("div",{className:"card",style:{marginBottom:16}},
-              e("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:8}},"이름 선택"),
-              e("select",{value:myId,onChange:ev=>setMyId(ev.target.value),
-                style:{width:"100%",padding:"11px 14px",fontSize:15,borderRadius:12,
-                  border:"1.5px solid rgba(0,0,0,0.12)",background:"#fff",color:"#191919",outline:"none"}},
-                e("option",{value:""},"-- 이름을 선택하세요 --"),
-                valid.map(m=>e("option",{key:m.id,value:String(m.id)},(m.rank?"["+m.rank+"기] ":"")+m.name))
-              )
-            ),
-            myId
-              ? e("div",{style:{display:"flex",flexDirection:"column",gap:10}},
-                  scheds.map(s=>{
-                    const v=getVote(s.id,myId);
-                    return e("div",{key:s.id,className:"card"},
-                      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
-                        e("div",null,
-                          e("p",{style:{fontSize:15,fontWeight:700}},s.date),
-                          e("p",{style:{marginTop:3,fontSize:13,color:"#888"}},s.event)
-                        ),
-                        e("div",{style:{display:"flex",gap:6}},
-                          s.closed && e("span",{style:{fontSize:12,fontWeight:600,padding:"3px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
-                          v&&!s.closed && e("span",{style:chip(v)},v==="yes"?"참석":"불참")
-                        )
-                      ),
-                      s.closed
-                        ? e("div",{style:{padding:"10px 14px",background:"#f5f6f8",borderRadius:10,fontSize:13,color:"#aaa",textAlign:"center"}},"투표가 마감되었습니다")
-                        : e("div",{style:{display:"flex",gap:8}},
-                            e("button",{style:pill(v==="yes","yes"),onClick:()=>castVote(s.id,myId,"yes")},"참석"),
-                            e("button",{style:pill(v==="no","no"),onClick:()=>castVote(s.id,myId,"no")},"불참")
-                          )
-                    );
-                  })
-                )
-              : e("div",{style:{textAlign:"center",padding:"2rem 0",color:"#bbb",fontSize:14}},"이름을 선택하면 투표를 시작할 수 있어요")
+      roster.length===0
+        ? e("div",{className:"card",style:{textAlign:"center",padding:"2.5rem",color:"#888",fontSize:14}},"관리자가 아직 인원 명단을 등록하지 않았습니다")
+        : e("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+            scheds.map(s=>{
+              const v=getVote(s.id);
+              return e("div",{key:s.id,className:"card"},
+                e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
+                  e("div",null,
+                    e("p",{style:{fontSize:15,fontWeight:700}},s.date),
+                    e("p",{style:{marginTop:3,fontSize:13,color:"#888"}},s.event)
+                  ),
+                  e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
+                    s.closed&&e("span",{style:{fontSize:12,fontWeight:600,padding:"3px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
+                    v&&!s.closed&&e("span",{style:chip(v)},v==="yes"?"참석":"불참")
+                  )
+                ),
+                s.closed
+                  ? e("div",{style:{padding:"10px 14px",background:"#f5f6f8",borderRadius:10,fontSize:13,color:"#aaa",textAlign:"center"}},"투표가 마감되었습니다")
+                  : e("div",{style:{display:"flex",gap:8}},
+                      e("button",{style:pill(v==="yes","yes"),onClick:()=>castVote(s.id,"yes")},"참석"),
+                      e("button",{style:pill(v==="no","no"),onClick:()=>castVote(s.id,"no")},"불참")
+                    )
+              );
+            })
           )
     ),
 
     /* ── 현황 ── */
     tab==="dashboard" && e("div",null,
       e("div",{style:{display:"flex",gap:10,marginBottom:12}},
-        [{l:"등록 인원",v:valid.length+"명"},{l:"평균 참석",v:avg+"명"}].map(c=>
+        [{l:"등록 인원",v:roster.length+"명"},{l:"평균 참석",v:avg+"명"}].map(c=>
           e("div",{key:c.l,style:{background:"#f5f6f8",borderRadius:16,padding:"16px 18px",flex:1}},
             e("p",{style:{fontSize:12,color:"#888",fontWeight:600}},c.l),
             e("p",{style:{marginTop:6,fontSize:26,fontWeight:700,letterSpacing:"-0.5px"}},c.v)
           )
         )
       ),
+
+      /* 차트 카드 */
       e("div",{className:"card"},
         e("p",{style:{marginBottom:10,fontSize:15,fontWeight:700}},"일정별 참석 인원"),
         e("div",{style:{display:"flex",gap:14,marginBottom:10,fontSize:12,color:"#888"}},
           e("span",{style:{display:"flex",alignItems:"center",gap:5}},e("span",{style:{width:10,height:10,borderRadius:3,background:"#00b074",display:"inline-block"}}),"참석"),
+          e("span",{style:{display:"flex",alignItems:"center",gap:5}},e("span",{style:{width:10,height:10,borderRadius:3,background:"#3182f6",display:"inline-block"}}),"참석 (인원충족)"),
           e("span",{style:{display:"flex",alignItems:"center",gap:5}},e("span",{style:{width:10,height:10,borderRadius:3,background:"#f45452",display:"inline-block"}}),"불참")
         ),
-        e(BarChartSVG,{data:stats,maxVal,scheds}),
-        stats.some(d=>{const s=scheds.find(x=>x.id===d.id);return s?.event==="축구"&&d.yes>=22}) &&
+        e("p",{style:{fontSize:12,color:"#bbb",marginBottom:8}},"막대를 클릭하면 명단을 확인할 수 있어요"),
+        e(BarChartSVG,{data:stats,maxVal,scheds,selected:dTab,onSelect:setDTab}),
+        stats.some(d=>{const s=scheds.find(x=>x.id===d.id);return s?.event==="축구"&&d.yes>=22})&&
           e("div",{style:{marginTop:10,padding:"8px 14px",background:"#e8f0fe",borderRadius:10,display:"flex",alignItems:"center",gap:8}},
             e("span",{style:{fontSize:13,color:"#1a56db",fontWeight:600}},"인원 충족"),
             e("span",{style:{fontSize:12,color:"#3d6fd4"}},"축구 22명 이상 참석 예정인 일정이 있습니다")
           )
       ),
-      e("div",{className:"card"},
-        e("p",{style:{marginBottom:14,fontSize:15,fontWeight:700}},"일정별 명단"),
-        e("div",{style:{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}},
-          scheds.map(s=>e("button",{key:s.id,onClick:()=>setDTab(s.id),style:{
-            padding:"6px 14px",fontSize:13,borderRadius:20,border:"none",cursor:"pointer",
-            fontWeight:safeTab===s.id?600:400,
-            background:safeTab===s.id?"#3182f6":"#f5f6f8",
-            color:safeTab===s.id?"#fff":"#888"}},s.date.slice(0,5)))
-        ),
-        (()=>{
-          const s=scheds.find(x=>x.id===safeTab);
-          if(!s)return e("p",{style:{fontSize:13,color:"#bbb"}},"일정이 없습니다");
-          return e("div",null,
-            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
-              e("div",null,
-                e("p",{style:{fontSize:14,fontWeight:700}},s.date+" · "+s.event),
-                e("p",{style:{marginTop:2,fontSize:13,color:"#888"}},voted(safeTab)+"/"+valid.length+"명 투표 완료")
-              ),
-              s.closed&&e("span",{style:{fontSize:12,fontWeight:600,padding:"4px 12px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감됨")
+
+      /* 선택된 일정 명단 */
+      selStat && (()=>{
+        const s=scheds.find(x=>x.id===dTab);
+        if(!s)return null;
+        const full=s.event==="축구"&&selStat.yes>=22;
+        return e("div",{className:"card"},
+          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+            e("div",null,
+              e("p",{style:{fontSize:15,fontWeight:700}},s.date+" · "+s.event),
+              e("div",{style:{display:"flex",gap:10,marginTop:4}},
+                e("span",{style:{fontSize:13,color:"#00805a",fontWeight:600}},"참석 "+selStat.yes+"명"),
+                e("span",{style:{fontSize:13,color:"#d63031",fontWeight:600}},"불참 "+selStat.no+"명"),
+                e("span",{style:{fontSize:13,color:"#bbb"}},"미투표 "+(roster.length-selStat.yes-selStat.no)+"명")
+              )
             ),
-            valid.length===0
-              ? e("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
-              : e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-                  valid.map(m=>{
-                    const v=getVote(safeTab,m.id);
-                    return e("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
-                      e("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                        e("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
-                        e("div",null,
-                          e("p",{style:{fontSize:14,fontWeight:600}},m.name),
-                          m.rank&&e("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
-                        )
-                      ),
-                      e("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},v==="yes"?"참석":v==="no"?"불참":"미투표")
-                    );
-                  })
-                )
-          );
-        })()
-      )
+            e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
+              s.closed&&e("span",{style:{fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
+              full&&e("span",{style:{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,background:"#e8f0fe",color:"#1a56db"}},"인원 충족")
+            )
+          ),
+          roster.length===0
+            ? e("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
+            : e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+                roster.map(m=>{
+                  const v=(votes[dTab]||{})[m.id]??null;
+                  return e("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
+                    e("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                      e("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},
+                        (m.name||"?")[0]),
+                      e("div",null,
+                        e("p",{style:{fontSize:14,fontWeight:600}},m.name),
+                        m.rank&&e("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
+                      )
+                    ),
+                    e("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},
+                      v==="yes"?"참석":v==="no"?"불참":"미투표")
+                  );
+                })
+              )
+        );
+      })()
     ),
 
     /* ── 관리자 모달 ── */
-    aOpen && e("div",{className:"overlay",onClick:ev=>{if(ev.target===ev.currentTarget)closeA()}},
+    aOpen&&e("div",{className:"overlay",onClick:ev=>{if(ev.target===ev.currentTarget)closeA()}},
       e("div",{className:"mbox"},
         !isAdmin
           ? e("div",null,
@@ -316,9 +361,12 @@ function App(){
               ),
               e("div",{style:{display:"flex",gap:6,marginBottom:18}},
                 e("button",{style:atb("schedules"),onClick:()=>setAView("schedules")},"일정 관리"),
+                e("button",{style:atb("roster"),onClick:()=>setAView("roster")},"인원 관리"),
                 e("button",{style:atb("votes"),onClick:()=>setAView("votes")},"투표 마감")
               ),
-              aView==="schedules" && e("div",null,
+
+              /* 일정 관리 */
+              aView==="schedules"&&e("div",null,
                 e("div",{style:{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #eee"}},
                   e("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"날짜"),
                   e("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"종목"),
@@ -330,18 +378,45 @@ function App(){
                       onChange:ev=>updES(s.id,"date",ev.target.value),style:{flex:1,fontSize:13}}),
                     e("input",{className:"inp",placeholder:"종목",value:s.event,
                       onChange:ev=>updES(s.id,"event",ev.target.value),style:{flex:1,fontSize:13}}),
-                    e("button",{onClick:()=>removeES(s.id),
-                      style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
+                    e("button",{onClick:()=>removeES(s.id),style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
                   ))
                 ),
-                e("button",{onClick:addES,style:{width:"100%",padding:"10px 0",borderRadius:12,
-                  border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 일정 추가"),
+                e("button",{onClick:addES,style:{width:"100%",padding:"10px 0",borderRadius:12,border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 일정 추가"),
                 e("div",{style:{display:"flex",gap:8}},
                   e("button",{onClick:closeA,style:{...btnGray,flex:1}},"취소"),
                   e("button",{onClick:saveA,style:{...btnBlue,flex:1}},"저장")
                 )
               ),
-              aView==="votes" && e("div",null,
+
+              /* 인원 관리 */
+              aView==="roster"&&e("div",null,
+                e("p",{style:{fontSize:12,color:"#888",marginBottom:10}},"기수·군번·이름을 정확히 입력해야 사용자가 로그인할 수 있습니다. 군번은 인증용으로만 사용됩니다."),
+                e("div",{style:{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #eee"}},
+                  e("span",{style:{fontSize:12,fontWeight:600,color:"#888",width:56}},"기수"),
+                  e("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"군번"),
+                  e("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"이름"),
+                  e("span",{style:{width:32}})
+                ),
+                e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12}},
+                  eRoster.map(r=>e("div",{key:r.id,style:{display:"flex",gap:6,alignItems:"center"}},
+                    e("input",{className:"inp",placeholder:"기수",value:r.rank,
+                      onChange:ev=>updER(r.id,"rank",ev.target.value),style:{width:56,flexShrink:0,fontSize:13}}),
+                    e("input",{className:"inp",placeholder:"군번",value:r.serial,
+                      onChange:ev=>updER(r.id,"serial",ev.target.value),style:{flex:1,fontSize:13}}),
+                    e("input",{className:"inp",placeholder:"이름",value:r.name,
+                      onChange:ev=>updER(r.id,"name",ev.target.value),style:{flex:1,fontSize:13}}),
+                    e("button",{onClick:()=>removeER(r.id),style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
+                  ))
+                ),
+                e("button",{onClick:addER,style:{width:"100%",padding:"10px 0",borderRadius:12,border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 인원 추가"),
+                e("div",{style:{display:"flex",gap:8}},
+                  e("button",{onClick:closeA,style:{...btnGray,flex:1}},"취소"),
+                  e("button",{onClick:saveA,style:{...btnBlue,flex:1}},"저장")
+                )
+              ),
+
+              /* 투표 마감 */
+              aView==="votes"&&e("div",null,
                 e("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"일정별로 투표를 마감하거나 다시 열 수 있어요"),
                 e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:16}},
                   eScheds.map(s=>e("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
