@@ -105,11 +105,12 @@ function App(){
   const handleRegister = ()=>{
     const {rank,serial,name}=form;
     if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
-    // 로스터에서 일치하는 인원 확인
-    const matched = roster.find(r=>r.rank===rank.trim()&&r.serial===serial.trim()&&r.name===name.trim());
-    if(!matched){setAuthErr("등록된 정보와 일치하지 않습니다.\n관리자에게 문의하세요.");return;}
-    // 이미 다른 기기에서 등록했는지 확인 (votes에 id 존재 여부로 판별 불가 — 단순히 me 저장)
-    setMe({id:matched.id,rank:matched.rank,name:matched.name,serial:matched.serial});
+    // 이미 같은 이름+기수 조합이 있는지 확인 (중복 방지)
+    const dup = roster.find(r=>r.rank===rank.trim()&&r.name===name.trim());
+    if(dup){setAuthErr("이미 등록된 이름입니다.\n본인이라면 아래 '본인 확인'으로 로그인해 주세요.");return;}
+    const newMember = {id:Date.now(),rank:rank.trim(),serial:serial.trim(),name:name.trim()};
+    setRoster(p=>[...p,newMember]);
+    setMe(newMember);
     setAuthErr("");setAuthStep("done");setTab("vote");
   };
 
@@ -195,8 +196,8 @@ function App(){
             e("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},
               ["기수","군번","이름"][i]),
             e("input",{className:"inp",
-              type:field==="serial"?"password":"text",
-              placeholder:[field==="rank"?"예) 3":"","",""][i],
+              type:"text",
+              placeholder:field==="rank"?"예) 868":"",
               value:f[field],
               onChange:ev=>setF(p=>({...p,[field]:ev.target.value})),
               onKeyDown:ev=>ev.key==="Enter"&&(isReg?handleRegister():handleLogin())
@@ -205,7 +206,7 @@ function App(){
         ),
         authErr&&e("p",{style:{fontSize:13,color:"#f45452",marginBottom:12,whiteSpace:"pre-line"}},authErr),
         e("button",{onClick:isReg?handleRegister:handleLogin,style:{...btnBlue,width:"100%",marginBottom:12}},
-          isReg?"확인":"로그인"),
+          isReg?"등록하기":"로그인"),
         e("button",{onClick:()=>{setAuthErr("");setAuthStep(isReg?"login":"register");},
           style:{width:"100%",background:"none",border:"none",fontSize:13,color:"#3182f6",cursor:"pointer",fontWeight:600}},
           isReg?"이미 등록하셨나요? 본인 확인":"처음 방문이신가요? 등록하기")
