@@ -25,13 +25,13 @@ input,select,button{font-family:inherit}
 <script>
 // ★ Firebase 프로젝트 설정값을 아래에 붙여넣으세요 ★
 const firebaseConfig = {
-  apiKey: "AIzaSyCt5pNuKsXH7K_VuZTlSKQ2qI8cSFkrRdk",
-  authDomain: "outward-exercise-e35c1.firebaseapp.com",
-  databaseURL: "https://outward-exercise-e35c1-default-rtdb.firebaseio.com/",
-  projectId: "outward-exercise-e35c1",
-  storageBucket: "outward-exercise-e35c1.firebasestorage.app",
-  messagingSenderId: "919136835385",
-  appId: "1:919136835385:web:ceca85d8c790f77d08fae8"
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_AUTH_DOMAIN",
+  databaseURL:       "YOUR_DATABASE_URL",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId:             "YOUR_APP_ID"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
@@ -39,7 +39,7 @@ const db = firebase.database();
 const {useState,useEffect,useRef} = React;
 const e = React.createElement;
 
-const ADMIN_PW = "secretplz";
+const ADMIN_PW = "0124";
 const LS_ME    = "exercise_me_v4";
 const DEF_SCHEDS = [
   {id:1,date:"3월 20일 (금)",event:"축구",closed:false},
@@ -136,23 +136,27 @@ function App(){
   useEffect(()=>lsSet(LS_ME,me),[me]);
 
   /* 등록 */
-  const handleRegister=()=>{
+  const handleRegister=async()=>{
     const {rank,serial,name}=form;
     if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
     const dup=roster.find(r=>r.rank===rank.trim()&&r.name===name.trim());
     if(dup){setAuthErr("이미 등록된 이름입니다.\n본인이라면 아래 '본인 확인'으로 로그인해 주세요.");return;}
-    const newM={id:Date.now(),rank:rank.trim(),serial:serial.trim(),name:name.trim()};
+    const serialHash = await sha256(serial.trim());
+    const newM={id:Date.now(),rank:rank.trim(),serialHash,name:name.trim()};
     db.ref("roster/"+newM.id).set(newM);
-    setMe(newM);setAuthErr("");setAuthStep("done");setTab("vote");
+    setMe({...newM, serial:serial.trim()});
+    setAuthErr("");setAuthStep("done");setTab("vote");
   };
 
   /* 로그인 */
-  const handleLogin=()=>{
+  const handleLogin=async()=>{
     const {rank,serial,name}=loginForm;
     if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
-    const matched=roster.find(r=>r.rank===rank.trim()&&r.serial===serial.trim()&&r.name===name.trim());
+    const serialHash = await sha256(serial.trim());
+    const matched=roster.find(r=>r.rank===rank.trim()&&(r.serialHash===serialHash||r.serial===serial.trim())&&r.name===name.trim());
     if(!matched){setAuthErr("등록된 정보와 일치하지 않습니다.");return;}
-    setMe(matched);setAuthErr("");setAuthStep("done");setTab("vote");
+    setMe({...matched, serial:serial.trim()});
+    setAuthErr("");setAuthStep("done");setTab("vote");
   };
 
   /* 투표 */
@@ -177,8 +181,9 @@ function App(){
   /* 관리자 */
   const openA=()=>{setAOpen(true);setPw("");setPwErr(false)};
   const closeA=()=>setAOpen(false);
-  const submitPw=()=>{
-    if(pw===ADMIN_PW){setIsAdmin(true);setEScheds(scheds.map(s=>({...s})));setPwErr(false);}
+  const submitPw=async()=>{
+    const hash = await sha256(pw);
+    if(hash==="91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d"){setIsAdmin(true);setEScheds(scheds.map(s=>({...s})));setPwErr(false);}
     else setPwErr(true);
   };
   const logoutA=()=>{setIsAdmin(false);setAOpen(false)};
