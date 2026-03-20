@@ -80,6 +80,7 @@ function BarChartSVG({data,maxVal,scheds,selected,onSelect}){
 /* ── 앱 ── */
 function App(){
   const [ready,setReady]         = useState(false);
+  const [dbErr,setDbErr]         = useState("");
   const [scheds,setScheds]       = useState(DEF_SCHEDS);
   const [roster,setRoster]       = useState([]);
   const [votes,setVotes]         = useState({});
@@ -99,13 +100,22 @@ function App(){
 
   /* Firebase 실시간 구독 */
   useEffect(()=>{
-    const refs = [
-      db.ref("scheds").on("value", snap=>{
-        const v=snap.val();
-        if(v) setScheds(Object.values(v));
-        else db.ref("scheds").set(Object.fromEntries(DEF_SCHEDS.map(s=>[s.id,s])));
-      }),
-    ];
+    // 10초 타임아웃
+    const timeout = setTimeout(()=>{
+      if(!ready) setDbErr("Firebase 연결에 실패했습니다.\ndatabaseURL이 올바른지 확인해 주세요.\n\n현재 설정된 databaseURL:\n"+firebaseConfig.databaseURL);
+    }, 10000);
+
+    db.ref("scheds").on("value", snap=>{
+      const v=snap.val();
+      if(v) setScheds(Object.values(v));
+      else db.ref("scheds").set(Object.fromEntries(DEF_SCHEDS.map(s=>[s.id,s])));
+      setReady(true);
+      clearTimeout(timeout);
+    }, err=>{
+      setDbErr("Firebase 오류: "+err.message);
+      clearTimeout(timeout);
+    });
+
     db.ref("roster").on("value", snap=>{
       const v=snap.val();
       setRoster(v?Object.values(v):[]);
@@ -113,8 +123,9 @@ function App(){
     db.ref("votes").on("value", snap=>{
       setVotes(snap.val()||{});
     });
-    db.ref("scheds").once("value").then(()=>setReady(true));
+
     return ()=>{
+      clearTimeout(timeout);
       db.ref("scheds").off();
       db.ref("roster").off();
       db.ref("votes").off();
@@ -197,6 +208,10 @@ function App(){
   const btnGray={padding:"12px 0",borderRadius:12,border:"1px solid rgba(0,0,0,0.1)",background:"#f5f6f8",color:"#555",fontSize:14,fontWeight:600,cursor:"pointer"};
 
   /* 로딩 */
+  if(dbErr) return e("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",padding:"2rem",textAlign:"center"}},
+    e("p",{style:{fontSize:16,fontWeight:700,color:"#f45452",marginBottom:12}},"연결 오류"),
+    e("p",{style:{fontSize:13,color:"#888",whiteSpace:"pre-line",lineHeight:1.8}},dbErr)
+  );
   if(!ready) return e("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontSize:15,color:"#aaa"}},"불러오는 중...");
 
   /* 인증 화면 */
