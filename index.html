@@ -1,462 +1,368 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>영외체련 인원조사</title>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f6f8; color: #191919; min-height: 100vh; }
-  input, select, button, textarea { font-family: inherit; }
-  input:focus, select:focus { border-color: #3182f6 !important; }
-  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 1rem; }
-  .modal-box { background: #fff; border-radius: 24px; padding: 28px 24px; width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; }
-  .card { background: #fff; border-radius: 20px; border: 1px solid rgba(0,0,0,0.07); padding: 20px; margin-bottom: 12px; }
-  .inp { width: 100%; padding: 10px 14px; font-size: 14px; border-radius: 12px; border: 1.5px solid rgba(0,0,0,0.12); background: #fff; color: #191919; outline: none; }
-  .inp:disabled { background: #f5f6f8; color: #999; }
-  .btn-primary { padding: 13px 0; border-radius: 14px; border: none; background: #3182f6; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; width: 100%; }
-  .btn-primary:disabled { background: #e5e8eb; color: #aaa; cursor: default; }
-  .btn-secondary { padding: 12px 0; border-radius: 12px; border: 1px solid rgba(0,0,0,0.1); background: #f5f6f8; color: #555; font-size: 14px; font-weight: 600; cursor: pointer; }
-  .pill-yes { flex: 1; padding: 9px 0; font-size: 14px; border: none; border-radius: 10px; cursor: pointer; }
-  .pill-no  { flex: 1; padding: 9px 0; font-size: 14px; border: none; border-radius: 10px; cursor: pointer; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f8;color:#191919;min-height:100vh}
+input,select,button{font-family:inherit}
+.card{background:#fff;border-radius:20px;border:1px solid rgba(0,0,0,0.07);padding:20px;margin-bottom:12px}
+.inp{width:100%;padding:10px 14px;font-size:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.12);background:#fff;color:#191919;outline:none}
+.inp:focus{border-color:#3182f6}
+.inp:disabled{background:#f5f6f8;color:#999}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:200;padding:1rem}
+.mbox{background:#fff;border-radius:24px;padding:28px 24px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto}
 </style>
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel">
-const { useState, useMemo, useEffect } = React;
-const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = Recharts;
+<script>
+const {useState,useMemo,useEffect} = React;
+const e = React.createElement;
 
-const ADMIN_PW = "이거알아도모른척해주세요";
-const LS_KEY = "exercise_data";
+const ADMIN_PW="이거알아도모른척해주세요", LS="exercise_v3";
 
-const defaultSchedules = [
-  { id: 1, date: "3월 20일 (금)", event: "축구", closed: false },
-  { id: 2, date: "4월 3일 (금)",  event: "축구", closed: false },
-  { id: 3, date: "4월 17일 (금)", event: "배구", closed: false },
-  { id: 4, date: "5월 1일 (금)",  event: "축구", closed: false },
-  { id: 5, date: "5월 15일 (금)", event: "족구", closed: false },
+const DEF_SCHEDS=[
+  {id:1,date:"3월 20일 (금)",event:"축구",closed:false},
+  {id:2,date:"4월 3일 (금)",event:"축구",closed:false},
+  {id:3,date:"4월 17일 (금)",event:"배구",closed:false},
+  {id:4,date:"5월 1일 (금)",event:"축구",closed:false},
+  {id:5,date:"5월 15일 (금)",event:"족구",closed:false},
 ];
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
+function load(){try{const r=localStorage.getItem(LS);return r?JSON.parse(r):null}catch{return null}}
+function save(s){try{localStorage.setItem(LS,JSON.stringify(s))}catch{}}
 
-function saveState(state) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
-}
-
-export default function App() {
-  const saved = loadState();
-
-  const [tab, setTab]               = useState("members");
-  const [schedules, setSchedules]   = useState(saved?.schedules || defaultSchedules);
-  const [members, setMembers]       = useState(saved?.members   || [{ id: 1, rank: "", name: "" }]);
-  const [confirmed, setConfirmed]   = useState(saved?.confirmed || false);
-  const [votes, setVotes]           = useState(saved?.votes     || {});
-  const [myId, setMyId]             = useState("");
-  const [schedTab, setSchedTab]     = useState(null);
-
-  const [adminOpen, setAdminOpen]   = useState(false);
-  const [pwInput, setPwInput]       = useState("");
-  const [pwError, setPwError]       = useState(false);
-  const [isAdmin, setIsAdmin]       = useState(false);
-  const [editScheds, setEditScheds] = useState([]);
-  const [adminView, setAdminView]   = useState("schedules");
-
-  const validMembers = members.filter(m => m.name.trim());
-
-  // schedTab 보정: 현재 schedTab이 유효하지 않으면 첫 번째 일정으로
-  const safeSchedTab = useMemo(() => {
-    if (schedules.find(s => s.id === schedTab)) return schedTab;
-    return schedules[0]?.id ?? null;
-  }, [schedTab, schedules]);
-
-  // 상태 변경 시 localStorage 저장
-  useEffect(() => {
-    saveState({ schedules, members, confirmed, votes });
-  }, [schedules, members, confirmed, votes]);
-
-  // 인원 관리
-  const addMember    = () => setMembers(p => [...p, { id: Date.now(), rank: "", name: "" }]);
-  const removeMember = (id) => { if (!confirmed) setMembers(p => p.filter(m => m.id !== id)); };
-  const updateMember = (id, field, val) => { if (!confirmed) setMembers(p => p.map(m => m.id === id ? { ...m, [field]: val } : m)); };
-  const handleConfirm = () => { if (validMembers.length === 0) return; setConfirmed(true); setTab("vote"); };
-  const handleEdit    = () => { setConfirmed(false); setMyId(""); };
-
-  // 투표
-  const setVote  = (schedId, memberId, val) => {
-    if (schedules.find(s => s.id === schedId)?.closed) return;
-    setVotes(p => ({ ...p, [schedId]: { ...(p[schedId] || {}), [memberId]: val } }));
-  };
-  const getVote  = (schedId, memberId) => (votes[schedId] || {})[memberId] ?? null;
-  const totalVoted = (schedId) => {
-    const sv = votes[schedId] || {};
-    return validMembers.filter(m => sv[m.id] != null).length;
-  };
-
-  const stats = useMemo(() => schedules.map(s => {
-    const sv = votes[s.id] || {};
-    const yes = validMembers.filter(m => sv[m.id] === "yes").length;
-    const no  = validMembers.filter(m => sv[m.id] === "no").length;
-    return { label: s.date.slice(0, 5), fullLabel: s.date + " · " + s.event, yes, no, id: s.id };
-  }), [votes, validMembers, schedules]);
-
-  const avgAttend = validMembers.length > 0
-    ? Math.round(stats.reduce((a, s) => a + s.yes, 0) / schedules.length) : 0;
-
-  // 관리자
-  const openAdmin  = () => { setAdminOpen(true); setPwInput(""); setPwError(false); };
-  const closeAdmin = () => { setAdminOpen(false); };
-  const submitPw   = () => {
-    if (pwInput === ADMIN_PW) { setIsAdmin(true); setEditScheds(schedules.map(s => ({ ...s }))); setPwError(false); }
-    else setPwError(true);
-  };
-  const logoutAdmin = () => { setIsAdmin(false); setAdminOpen(false); };
-  const updateEditSched = (id, field, val) => setEditScheds(p => p.map(s => s.id === id ? { ...s, [field]: val } : s));
-  const addSched    = () => setEditScheds(p => [...p, { id: Date.now(), date: "", event: "", closed: false }]);
-  const removeSched = (id) => setEditScheds(p => p.filter(s => s.id !== id));
-  const toggleClose = (id) => setEditScheds(p => p.map(s => s.id === id ? { ...s, closed: !s.closed } : s));
-  const saveScheds  = () => {
-    const next = editScheds.filter(s => s.date.trim());
-    setSchedules(next);
-    setSchedTab(next[0]?.id ?? null);
-    setAdminOpen(false);
-  };
-
-  const tabBtn = (key, label) => (
-    <button key={key} onClick={() => setTab(key)} style={{
-      flex: 1, padding: "9px 0", fontSize: 14, fontWeight: tab === key ? 700 : 400,
-      background: tab === key ? "#fff" : "transparent",
-      color: tab === key ? "#3182f6" : "#888",
-      border: "none", borderRadius: 11, cursor: "pointer",
-      boxShadow: tab === key ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-    }}>{label}</button>
+/* ── SVG 막대 차트 ── */
+function BarChartSVG({data,maxVal}){
+  const W=340,H=160,PL=28,PB=24,PT=10,PR=10;
+  const cW=W-PL-PR, cH=H-PB-PT;
+  const n=data.length, gW=cW/n, bW=Math.min(gW*0.28,22);
+  const yScale=v=>cH-(v/Math.max(maxVal,1))*cH;
+  const yTicks=[0,Math.ceil(maxVal/2),maxVal].filter((v,i,a)=>a.indexOf(v)===i);
+  return e("svg",{viewBox:"0 0 "+W+" "+H,style:{width:"100%",height:"auto"}},
+    /* y grid */
+    yTicks.map(v=>e("g",{key:v},
+      e("line",{x1:PL,x2:W-PR,y1:PT+yScale(v),y2:PT+yScale(v),stroke:"rgba(0,0,0,0.06)",strokeWidth:1}),
+      e("text",{x:PL-4,y:PT+yScale(v)+4,textAnchor:"end",fontSize:10,fill:"#bbb"},v)
+    )),
+    /* bars */
+    data.map((d,i)=>{
+      const cx=PL+gW*i+gW/2;
+      return e("g",{key:d.id},
+        e("rect",{x:cx-bW-2,y:PT+yScale(d.yes),width:bW,height:Math.max((d.yes/Math.max(maxVal,1))*cH,2),fill:"#00b074",rx:4}),
+        e("rect",{x:cx+2,y:PT+yScale(d.no),width:bW,height:Math.max((d.no/Math.max(maxVal,1))*cH,2),fill:"#f45452",rx:4}),
+        e("text",{x:cx,y:H-8,textAnchor:"middle",fontSize:10,fill:"#bbb"},d.label)
+      );
+    })
   );
+}
 
-  const pillStyle = (active, type) => ({
-    flex: 1, padding: "9px 0", fontSize: 14, fontWeight: active ? 600 : 400,
-    background: active ? (type === "yes" ? "#00b074" : "#f45452") : "#f5f6f8",
-    color: active ? "#fff" : "#888",
-    border: "none", borderRadius: 10, cursor: "pointer",
-  });
+function App(){
+  const saved=load();
+  const [tab,setTab]             = useState("members");
+  const [scheds,setScheds]       = useState(saved?.scheds||DEF_SCHEDS);
+  const [members,setMembers]     = useState(saved?.members||[{id:1,rank:"",name:""}]);
+  const [confirmed,setConfirmed] = useState(saved?.confirmed||false);
+  const [votes,setVotes]         = useState(saved?.votes||{});
+  const [myId,setMyId]           = useState("");
+  const [dTab,setDTab]           = useState(DEF_SCHEDS[0].id);
+  const [aOpen,setAOpen]         = useState(false);
+  const [pw,setPw]               = useState("");
+  const [pwErr,setPwErr]         = useState(false);
+  const [isAdmin,setIsAdmin]     = useState(false);
+  const [eScheds,setEScheds]     = useState([]);
+  const [aView,setAView]         = useState("schedules");
 
-  const chipStyle = (type) => ({
-    fontSize: 13, padding: "4px 12px", borderRadius: 20,
-    background: type === "yes" ? "#e6faf3" : "#fff0f0",
-    color: type === "yes" ? "#00805a" : "#d63031",
-  });
+  const valid=members.filter(m=>m.name.trim());
 
-  return (
-    <div style={{ padding: "1.5rem 1.25rem", maxWidth: 640, margin: "0 auto" }}>
+  const safeTab=useMemo(()=>{
+    if(scheds.find(s=>s.id===dTab))return dTab;
+    return scheds[0]?.id??null;
+  },[dTab,scheds]);
 
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "2rem" }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.5px" }}>영외체련 인원조사</h1>
-          <p style={{ marginTop: 5, fontSize: 13, color: "#888", lineHeight: 1.65 }}>
-            매월 2·4주 축구 고정 / 1·3주 타 종목 예정<br />투표 마감 : 전 주 일요일 오후 9시
-          </p>
-        </div>
-        <button onClick={openAdmin} style={{
-          padding: "7px 14px", fontSize: 13, fontWeight: 600, borderRadius: 10, flexShrink: 0,
-          background: isAdmin ? "#3182f6" : "#f5f6f8",
-          color: isAdmin ? "#fff" : "#555",
-          border: "1px solid rgba(0,0,0,0.1)", cursor: "pointer",
-        }}>{isAdmin ? "관리자 모드" : "관리자"}</button>
-      </div>
+  useEffect(()=>save({scheds,members,confirmed,votes}),[scheds,members,confirmed,votes]);
 
-      {/* Tabs */}
-      <div style={{ display: "flex", marginBottom: "1.5rem", background: "#eef0f3", borderRadius: 14, padding: 4 }}>
-        {tabBtn("members", "인원 관리")}
-        {tabBtn("vote", "투표")}
-        {tabBtn("dashboard", "현황")}
-      </div>
+  const addM    = ()=>setMembers(p=>[...p,{id:Date.now(),rank:"",name:""}]);
+  const removeM = id=>{if(!confirmed)setMembers(p=>p.filter(m=>m.id!==id))};
+  const updM    = (id,f,v)=>{if(!confirmed)setMembers(p=>p.map(m=>m.id===id?{...m,[f]:v}:m))};
+  const confirm = ()=>{if(!valid.length)return;setConfirmed(true);setTab("vote")};
+  const unconfirm=()=>{setConfirmed(false);setMyId("")};
 
-      {/* ── 인원 관리 ── */}
-      {tab === "members" && (
-        <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <span style={{ fontSize: 16, fontWeight: 700 }}>인원 명단</span>
-            <span style={{ fontSize: 13, color: "#888" }}>{validMembers.length}명</span>
-          </div>
-          {confirmed && (
-            <div style={{ marginBottom: 14, padding: "10px 14px", background: "#e6faf3", borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 13, color: "#00805a", fontWeight: 600 }}>명단이 확인되었습니다</span>
-              <button onClick={handleEdit} style={{ fontSize: 13, color: "#3182f6", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>수정하기</button>
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 8, marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #eee" }}>
-            <span style={{ fontSize: 12, color: "#888", width: 72, fontWeight: 600 }}>기수</span>
-            <span style={{ fontSize: 12, color: "#888", flex: 1, fontWeight: 600 }}>이름</span>
-            {!confirmed && <span style={{ width: 32 }} />}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-            {members.map(m => (
-              <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input className="inp" placeholder="기수" value={m.rank} disabled={confirmed}
-                  onChange={e => updateMember(m.id, "rank", e.target.value)}
-                  style={{ width: 72, flexShrink: 0 }} />
-                <input className="inp" placeholder="이름" value={m.name} disabled={confirmed}
-                  onChange={e => updateMember(m.id, "name", e.target.value)}
-                  style={{ flex: 1 }} />
-                {!confirmed && (
-                  <button onClick={() => removeMember(m.id)} style={{ width: 32, height: 38, borderRadius: 10, border: "1px solid #e0e0e0", background: "#f5f6f8", color: "#888", cursor: "pointer", fontSize: 18 }}>×</button>
-                )}
-              </div>
-            ))}
-          </div>
-          {!confirmed && (
-            <>
-              <button onClick={addMember} style={{ width: "100%", padding: "11px 0", borderRadius: 12, border: "1.5px dashed #c0c8d8", background: "transparent", color: "#3182f6", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 10 }}>+ 인원 추가</button>
-              <button className="btn-primary" onClick={handleConfirm} disabled={validMembers.length === 0}>확인</button>
-            </>
-          )}
-        </div>
-      )}
+  const castVote=(sid,mid,val)=>{
+    if(scheds.find(s=>s.id===sid)?.closed)return;
+    setVotes(p=>({...p,[sid]:{...(p[sid]||{}),[mid]:val}}));
+  };
+  const getVote =(sid,mid)=>(votes[sid]||{})[mid]??null;
+  const voted   = sid=>{const sv=votes[sid]||{};return valid.filter(m=>sv[m.id]!=null).length};
 
-      {/* ── 투표 ── */}
-      {tab === "vote" && (
-        <div>
-          {!confirmed ? (
-            <div className="card" style={{ textAlign: "center", padding: "2.5rem", color: "#888", fontSize: 14 }}>
-              인원 관리 탭에서 명단을 입력하고 확인해 주세요
-            </div>
-          ) : (
-            <>
-              <div className="card" style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#888", display: "block", marginBottom: 8 }}>이름 선택</label>
-                <select value={myId} onChange={e => setMyId(e.target.value)}
-                  style={{ width: "100%", padding: "11px 14px", fontSize: 15, borderRadius: 12, border: "1.5px solid rgba(0,0,0,0.12)", background: "#fff", color: "#191919", outline: "none" }}>
-                  <option value="">-- 이름을 선택하세요 --</option>
-                  {validMembers.map(m => (
-                    <option key={m.id} value={m.id}>{m.rank ? "[" + m.rank + "기] " : ""}{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              {myId ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {schedules.map(s => {
-                    const v = getVote(s.id, myId);
-                    return (
-                      <div key={s.id} className="card">
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                          <div>
-                            <p style={{ fontSize: 15, fontWeight: 700 }}>{s.date}</p>
-                            <p style={{ marginTop: 3, fontSize: 13, color: "#888" }}>{s.event}</p>
-                          </div>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            {s.closed && <span style={{ fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#f0f0f0", color: "#888" }}>마감</span>}
-                            {v && !s.closed && <span style={chipStyle(v)}>{v === "yes" ? "참석" : "불참"}</span>}
-                          </div>
-                        </div>
-                        {s.closed ? (
-                          <div style={{ padding: "10px 14px", background: "#f5f6f8", borderRadius: 10, fontSize: 13, color: "#aaa", textAlign: "center" }}>투표가 마감되었습니다</div>
-                        ) : (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button className="pill-yes" style={pillStyle(v === "yes", "yes")} onClick={() => setVote(s.id, myId, "yes")}>참석</button>
-                            <button className="pill-no"  style={pillStyle(v === "no",  "no")}  onClick={() => setVote(s.id, myId, "no")}>불참</button>
-                          </div>
-                        )}
-                      </div>
+  const stats=useMemo(()=>scheds.map(s=>{
+    const sv=votes[s.id]||{};
+    return{id:s.id,label:s.date.slice(0,5),
+      yes:valid.filter(m=>sv[m.id]==="yes").length,
+      no:valid.filter(m=>sv[m.id]==="no").length};
+  }),[votes,valid,scheds]);
+
+  const avg=valid.length?Math.round(stats.reduce((a,s)=>a+s.yes,0)/scheds.length):0;
+  const maxVal=Math.max(valid.length,1);
+
+  const openA  = ()=>{setAOpen(true);setPw("");setPwErr(false)};
+  const closeA = ()=>setAOpen(false);
+  const submitPw=()=>{if(pw===ADMIN_PW){setIsAdmin(true);setEScheds(scheds.map(s=>({...s})));setPwErr(false)}else setPwErr(true)};
+  const logoutA= ()=>{setIsAdmin(false);setAOpen(false)};
+  const updES  = (id,f,v)=>setEScheds(p=>p.map(s=>s.id===id?{...s,[f]:v}:s));
+  const addES  = ()=>setEScheds(p=>[...p,{id:Date.now(),date:"",event:"",closed:false}]);
+  const removeES=(id)=>setEScheds(p=>p.filter(s=>s.id!==id));
+  const toggleC= id=>setEScheds(p=>p.map(s=>s.id===id?{...s,closed:!s.closed}:s));
+  const saveA  = ()=>{const n=eScheds.filter(s=>s.date.trim());setScheds(n);setDTab(n[0]?.id??null);setAOpen(false)};
+
+  /* style helpers */
+  const tb=k=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:tab===k?700:400,
+    background:tab===k?"#fff":"transparent",color:tab===k?"#3182f6":"#888",
+    border:"none",borderRadius:11,cursor:"pointer",
+    boxShadow:tab===k?"0 1px 4px rgba(0,0,0,0.08)":"none"});
+  const pill=(a,t)=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:a?600:400,
+    background:a?(t==="yes"?"#00b074":"#f45452"):"#f5f6f8",
+    color:a?"#fff":"#888",border:"none",borderRadius:10,cursor:"pointer"});
+  const chip=t=>({fontSize:13,padding:"4px 12px",borderRadius:20,
+    background:t==="yes"?"#e6faf3":"#fff0f0",color:t==="yes"?"#00805a":"#d63031"});
+  const atb=k=>({flex:1,padding:"8px 0",fontSize:13,fontWeight:aView===k?700:400,
+    border:"none",borderRadius:10,cursor:"pointer",
+    background:aView===k?"#3182f6":"#f5f6f8",color:aView===k?"#fff":"#888"});
+  const btnBlue={padding:"12px 0",borderRadius:12,border:"none",background:"#3182f6",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"};
+  const btnGray={padding:"12px 0",borderRadius:12,border:"1px solid rgba(0,0,0,0.1)",background:"#f5f6f8",color:"#555",fontSize:14,fontWeight:600,cursor:"pointer"};
+
+  return e("div",{style:{padding:"1.5rem 1.25rem",maxWidth:640,margin:"0 auto"}},
+
+    /* Header */
+    e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"2rem"}},
+      e("div",null,
+        e("h1",{style:{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}},"영외체련 인원조사"),
+        e("p",{style:{marginTop:5,fontSize:13,color:"#888",lineHeight:1.65}},
+          "매월 2·4주 축구 고정 / 1·3주 타 종목 예정",e("br"),"투표 마감 : 전 주 일요일 오후 9시")
+      ),
+      e("button",{onClick:openA,style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,flexShrink:0,
+        background:isAdmin?"#3182f6":"#f5f6f8",color:isAdmin?"#fff":"#555",
+        border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}},isAdmin?"관리자 모드":"관리자")
+    ),
+
+    /* Tabs */
+    e("div",{style:{display:"flex",marginBottom:"1.5rem",background:"#eef0f3",borderRadius:14,padding:4}},
+      e("button",{style:tb("members"),onClick:()=>setTab("members")},"인원 관리"),
+      e("button",{style:tb("vote"),onClick:()=>setTab("vote")},"투표"),
+      e("button",{style:tb("dashboard"),onClick:()=>setTab("dashboard")},"현황")
+    ),
+
+    /* ── 인원 관리 ── */
+    tab==="members" && e("div",{className:"card"},
+      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+        e("span",{style:{fontSize:16,fontWeight:700}},"인원 명단"),
+        e("span",{style:{fontSize:13,color:"#888"}},valid.length+"명")
+      ),
+      confirmed && e("div",{style:{marginBottom:14,padding:"10px 14px",background:"#e6faf3",borderRadius:12,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+        e("span",{style:{fontSize:13,color:"#00805a",fontWeight:600}},"명단이 확인되었습니다"),
+        e("button",{onClick:unconfirm,style:{fontSize:13,color:"#3182f6",background:"none",border:"none",cursor:"pointer",fontWeight:600}},"수정하기")
+      ),
+      e("div",{style:{display:"flex",gap:8,marginBottom:10,paddingBottom:8,borderBottom:"1px solid #eee"}},
+        e("span",{style:{fontSize:12,color:"#888",width:72,fontWeight:600}},"기수"),
+        e("span",{style:{fontSize:12,color:"#888",flex:1,fontWeight:600}},"이름"),
+        !confirmed && e("span",{style:{width:32}})
+      ),
+      e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:14}},
+        members.map(m=>e("div",{key:m.id,style:{display:"flex",gap:8,alignItems:"center"}},
+          e("input",{className:"inp",placeholder:"기수",value:m.rank,disabled:confirmed,
+            onChange:ev=>updM(m.id,"rank",ev.target.value),style:{width:72,flexShrink:0}}),
+          e("input",{className:"inp",placeholder:"이름",value:m.name,disabled:confirmed,
+            onChange:ev=>updM(m.id,"name",ev.target.value),style:{flex:1}}),
+          !confirmed && e("button",{onClick:()=>removeM(m.id),
+            style:{width:32,height:38,borderRadius:10,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:18}},"×")
+        ))
+      ),
+      !confirmed && e("button",{onClick:addM,style:{width:"100%",padding:"11px 0",borderRadius:12,
+        border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 인원 추가"),
+      !confirmed && e("button",{onClick:confirm,disabled:!valid.length,style:{width:"100%",padding:"13px 0",borderRadius:14,border:"none",
+        background:valid.length?"#3182f6":"#e5e8eb",color:valid.length?"#fff":"#aaa",
+        fontSize:15,fontWeight:700,cursor:valid.length?"pointer":"default"}},"확인")
+    ),
+
+    /* ── 투표 ── */
+    tab==="vote" && e("div",null,
+      !confirmed
+        ? e("div",{className:"card",style:{textAlign:"center",padding:"2.5rem",color:"#888",fontSize:14}},"인원 관리 탭에서 명단을 입력하고 확인해 주세요")
+        : e("div",null,
+            e("div",{className:"card",style:{marginBottom:16}},
+              e("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:8}},"이름 선택"),
+              e("select",{value:myId,onChange:ev=>setMyId(ev.target.value),
+                style:{width:"100%",padding:"11px 14px",fontSize:15,borderRadius:12,
+                  border:"1.5px solid rgba(0,0,0,0.12)",background:"#fff",color:"#191919",outline:"none"}},
+                e("option",{value:""},"-- 이름을 선택하세요 --"),
+                valid.map(m=>e("option",{key:m.id,value:String(m.id)},(m.rank?"["+m.rank+"기] ":"")+m.name))
+              )
+            ),
+            myId
+              ? e("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+                  scheds.map(s=>{
+                    const v=getVote(s.id,myId);
+                    return e("div",{key:s.id,className:"card"},
+                      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
+                        e("div",null,
+                          e("p",{style:{fontSize:15,fontWeight:700}},s.date),
+                          e("p",{style:{marginTop:3,fontSize:13,color:"#888"}},s.event)
+                        ),
+                        e("div",{style:{display:"flex",gap:6}},
+                          s.closed && e("span",{style:{fontSize:12,fontWeight:600,padding:"3px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
+                          v&&!s.closed && e("span",{style:chip(v)},v==="yes"?"참석":"불참")
+                        )
+                      ),
+                      s.closed
+                        ? e("div",{style:{padding:"10px 14px",background:"#f5f6f8",borderRadius:10,fontSize:13,color:"#aaa",textAlign:"center"}},"투표가 마감되었습니다")
+                        : e("div",{style:{display:"flex",gap:8}},
+                            e("button",{style:pill(v==="yes","yes"),onClick:()=>castVote(s.id,myId,"yes")},"참석"),
+                            e("button",{style:pill(v==="no","no"),onClick:()=>castVote(s.id,myId,"no")},"불참")
+                          )
                     );
-                  })}
-                </div>
-              ) : (
-                <div style={{ textAlign: "center", padding: "2rem 0", color: "#bbb", fontSize: 14 }}>이름을 선택하면 투표를 시작할 수 있어요</div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+                  })
+                )
+              : e("div",{style:{textAlign:"center",padding:"2rem 0",color:"#bbb",fontSize:14}},"이름을 선택하면 투표를 시작할 수 있어요")
+          )
+    ),
 
-      {/* ── 현황 ── */}
-      {tab === "dashboard" && (
-        <div>
-          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-            {[{ label: "등록 인원", val: validMembers.length + "명" }, { label: "평균 참석", val: avgAttend + "명" }].map(c => (
-              <div key={c.label} style={{ background: "#f5f6f8", borderRadius: 16, padding: "16px 18px", flex: 1 }}>
-                <p style={{ fontSize: 12, color: "#888", fontWeight: 600 }}>{c.label}</p>
-                <p style={{ marginTop: 6, fontSize: 26, fontWeight: 700, letterSpacing: "-0.5px" }}>{c.val}</p>
-              </div>
-            ))}
-          </div>
-          <div className="card">
-            <p style={{ marginBottom: 10, fontSize: 15, fontWeight: 700 }}>일정별 참석 인원</p>
-            <div style={{ display: "flex", gap: 14, marginBottom: 12, fontSize: 12, color: "#888" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#00b074", display: "inline-block" }} />참석</span>
-              <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#f45452", display: "inline-block" }} />불참</span>
-            </div>
-            <div style={{ height: 220 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats} barGap={3} barCategoryGap="30%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#aaa" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 12, fill: "#aaa" }} axisLine={false} tickLine={false} domain={[0, Math.max(validMembers.length, 1)]} />
-                  <Tooltip formatter={(v, n) => [v + "명", n === "yes" ? "참석" : "불참"]}
-                    labelFormatter={l => stats.find(s => s.label === l)?.fullLabel || l}
-                    contentStyle={{ fontSize: 13, borderRadius: 12, border: "1px solid #eee" }} />
-                  <Bar dataKey="yes" name="yes" fill="#00b074" radius={[6,6,0,0]} maxBarSize={40} />
-                  <Bar dataKey="no"  name="no"  fill="#f45452" radius={[6,6,0,0]} maxBarSize={40} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="card">
-            <p style={{ marginBottom: 14, fontSize: 15, fontWeight: 700 }}>일정별 명단</p>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-              {schedules.map(s => (
-                <button key={s.id} onClick={() => setSchedTab(s.id)} style={{
-                  padding: "6px 14px", fontSize: 13, borderRadius: 20, border: "none", cursor: "pointer", fontWeight: safeSchedTab === s.id ? 600 : 400,
-                  background: safeSchedTab === s.id ? "#3182f6" : "#f5f6f8",
-                  color:      safeSchedTab === s.id ? "#fff"    : "#888",
-                }}>{s.date.slice(0, 5)}</button>
-              ))}
-            </div>
-            {(() => {
-              const sched = schedules.find(s => s.id === safeSchedTab);
-              if (!sched) return <p style={{ fontSize: 13, color: "#bbb" }}>일정이 없습니다</p>;
-              return (
-                <>
-                  <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <p style={{ fontSize: 14, fontWeight: 700 }}>{sched.date} · {sched.event}</p>
-                      <p style={{ marginTop: 2, fontSize: 13, color: "#888" }}>{totalVoted(safeSchedTab)}/{validMembers.length}명 투표 완료</p>
-                    </div>
-                    {sched.closed && <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 20, background: "#f0f0f0", color: "#888" }}>마감됨</span>}
-                  </div>
-                  {validMembers.length === 0 ? (
-                    <p style={{ fontSize: 13, color: "#bbb" }}>등록된 인원이 없습니다</p>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {validMembers.map(m => {
-                        const v = getVote(safeSchedTab, m.id);
-                        const initial = (m.name || "?")[0];
-                        return (
-                          <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#f5f6f8", borderRadius: 12 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#e8f0fe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#3182f6", flexShrink: 0 }}>{initial}</div>
-                              <div>
-                                <p style={{ fontSize: 14, fontWeight: 600 }}>{m.name}</p>
-                                {m.rank && <p style={{ fontSize: 12, color: "#888" }}>{m.rank}기</p>}
-                              </div>
-                            </div>
-                            <span style={v ? chipStyle(v) : { fontSize: 13, color: "#bbb" }}>
-                              {v === "yes" ? "참석" : v === "no" ? "불참" : "미투표"}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
+    /* ── 현황 ── */
+    tab==="dashboard" && e("div",null,
+      e("div",{style:{display:"flex",gap:10,marginBottom:12}},
+        [{l:"등록 인원",v:valid.length+"명"},{l:"평균 참석",v:avg+"명"}].map(c=>
+          e("div",{key:c.l,style:{background:"#f5f6f8",borderRadius:16,padding:"16px 18px",flex:1}},
+            e("p",{style:{fontSize:12,color:"#888",fontWeight:600}},c.l),
+            e("p",{style:{marginTop:6,fontSize:26,fontWeight:700,letterSpacing:"-0.5px"}},c.v)
+          )
+        )
+      ),
+      e("div",{className:"card"},
+        e("p",{style:{marginBottom:10,fontSize:15,fontWeight:700}},"일정별 참석 인원"),
+        e("div",{style:{display:"flex",gap:14,marginBottom:10,fontSize:12,color:"#888"}},
+          e("span",{style:{display:"flex",alignItems:"center",gap:5}},e("span",{style:{width:10,height:10,borderRadius:3,background:"#00b074",display:"inline-block"}}),"참석"),
+          e("span",{style:{display:"flex",alignItems:"center",gap:5}},e("span",{style:{width:10,height:10,borderRadius:3,background:"#f45452",display:"inline-block"}}),"불참")
+        ),
+        e(BarChartSVG,{data:stats,maxVal})
+      ),
+      e("div",{className:"card"},
+        e("p",{style:{marginBottom:14,fontSize:15,fontWeight:700}},"일정별 명단"),
+        e("div",{style:{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}},
+          scheds.map(s=>e("button",{key:s.id,onClick:()=>setDTab(s.id),style:{
+            padding:"6px 14px",fontSize:13,borderRadius:20,border:"none",cursor:"pointer",
+            fontWeight:safeTab===s.id?600:400,
+            background:safeTab===s.id?"#3182f6":"#f5f6f8",
+            color:safeTab===s.id?"#fff":"#888"}},s.date.slice(0,5)))
+        ),
+        (()=>{
+          const s=scheds.find(x=>x.id===safeTab);
+          if(!s)return e("p",{style:{fontSize:13,color:"#bbb"}},"일정이 없습니다");
+          return e("div",null,
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+              e("div",null,
+                e("p",{style:{fontSize:14,fontWeight:700}},s.date+" · "+s.event),
+                e("p",{style:{marginTop:2,fontSize:13,color:"#888"}},voted(safeTab)+"/"+valid.length+"명 투표 완료")
+              ),
+              s.closed&&e("span",{style:{fontSize:12,fontWeight:600,padding:"4px 12px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감됨")
+            ),
+            valid.length===0
+              ? e("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
+              : e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+                  valid.map(m=>{
+                    const v=getVote(safeTab,m.id);
+                    return e("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
+                      e("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                        e("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
+                        e("div",null,
+                          e("p",{style:{fontSize:14,fontWeight:600}},m.name),
+                          m.rank&&e("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
+                        )
+                      ),
+                      e("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},v==="yes"?"참석":v==="no"?"불참":"미투표")
+                    );
+                  })
+                )
+          );
+        })()
+      )
+    ),
 
-      {/* ── 관리자 모달 ── */}
-      {adminOpen && (
-        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) closeAdmin(); }}>
-          <div className="modal-box">
-            {!isAdmin ? (
-              <>
-                <p style={{ marginBottom: 20, fontSize: 18, fontWeight: 700 }}>관리자 로그인</p>
-                <input type="password" className="inp" placeholder="비밀번호 입력" value={pwInput}
-                  onChange={e => setPwInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && submitPw()}
-                  style={{ marginBottom: 8, border: "1.5px solid " + (pwError ? "#f45452" : "rgba(0,0,0,0.12)") }} />
-                {pwError && <p style={{ marginBottom: 12, fontSize: 13, color: "#f45452" }}>비밀번호가 올바르지 않습니다</p>}
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn-secondary" style={{ flex: 1 }} onClick={closeAdmin}>취소</button>
-                  <button style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "none", background: "#3182f6", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={submitPw}>확인</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                  <p style={{ fontSize: 18, fontWeight: 700 }}>관리자 설정</p>
-                  <button onClick={logoutAdmin} style={{ fontSize: 13, color: "#f45452", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>로그아웃</button>
-                </div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
-                  {[["schedules","일정 관리"],["votes","투표 마감"]].map(([k,l]) => (
-                    <button key={k} onClick={() => setAdminView(k)} style={{
-                      flex: 1, padding: "8px 0", fontSize: 13, fontWeight: adminView === k ? 700 : 400, border: "none", borderRadius: 10, cursor: "pointer",
-                      background: adminView === k ? "#3182f6" : "#f5f6f8",
-                      color:      adminView === k ? "#fff"    : "#888",
-                    }}>{l}</button>
-                  ))}
-                </div>
-
-                {adminView === "schedules" && (
-                  <>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #eee" }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "#888", flex: 1 }}>날짜</span>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "#888", flex: 1 }}>종목</span>
-                      <span style={{ width: 32 }} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-                      {editScheds.map(s => (
-                        <div key={s.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <input className="inp" placeholder="3월 20일 (금)" value={s.date}
-                            onChange={e => updateEditSched(s.id, "date", e.target.value)} style={{ flex: 1, fontSize: 13 }} />
-                          <input className="inp" placeholder="종목" value={s.event}
-                            onChange={e => updateEditSched(s.id, "event", e.target.value)} style={{ flex: 1, fontSize: 13 }} />
-                          <button onClick={() => removeSched(s.id)} style={{ width: 32, height: 36, borderRadius: 8, border: "1px solid #e0e0e0", background: "#f5f6f8", color: "#888", cursor: "pointer", fontSize: 16 }}>×</button>
-                        </div>
-                      ))}
-                    </div>
-                    <button onClick={addSched} style={{ width: "100%", padding: "10px 0", borderRadius: 12, border: "1.5px dashed #c0c8d8", background: "transparent", color: "#3182f6", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 10 }}>+ 일정 추가</button>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button className="btn-secondary" style={{ flex: 1 }} onClick={closeAdmin}>취소</button>
-                      <button style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "none", background: "#3182f6", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={saveScheds}>저장</button>
-                    </div>
-                  </>
-                )}
-
-                {adminView === "votes" && (
-                  <>
-                    <p style={{ marginBottom: 12, fontSize: 13, color: "#888" }}>일정별로 투표를 마감하거나 다시 열 수 있어요</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                      {editScheds.map(s => (
-                        <div key={s.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "#f5f6f8", borderRadius: 14 }}>
-                          <div>
-                            <p style={{ fontSize: 14, fontWeight: 600 }}>{s.date || "날짜 미설정"}</p>
-                            <p style={{ marginTop: 2, fontSize: 12, color: "#888" }}>{s.event || "종목 미설정"}</p>
-                          </div>
-                          <button onClick={() => toggleClose(s.id)} style={{
-                            padding: "7px 14px", fontSize: 13, fontWeight: 600, borderRadius: 10, border: "none", cursor: "pointer",
-                            background: s.closed ? "#e6faf3" : "#fff0f0",
-                            color:      s.closed ? "#00805a" : "#f45452",
-                          }}>{s.closed ? "열기" : "마감"}</button>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button className="btn-secondary" style={{ flex: 1 }} onClick={closeAdmin}>취소</button>
-                      <button style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "none", background: "#3182f6", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={saveScheds}>저장</button>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    /* ── 관리자 모달 ── */
+    aOpen && e("div",{className:"overlay",onClick:ev=>{if(ev.target===ev.currentTarget)closeA()}},
+      e("div",{className:"mbox"},
+        !isAdmin
+          ? e("div",null,
+              e("p",{style:{marginBottom:20,fontSize:18,fontWeight:700}},"관리자 로그인"),
+              e("input",{type:"password",className:"inp",placeholder:"비밀번호 입력",value:pw,
+                onChange:ev=>setPw(ev.target.value),onKeyDown:ev=>ev.key==="Enter"&&submitPw(),
+                style:{marginBottom:8,borderColor:pwErr?"#f45452":undefined}}),
+              pwErr&&e("p",{style:{marginBottom:12,fontSize:13,color:"#f45452"}},"비밀번호가 올바르지 않습니다"),
+              e("div",{style:{display:"flex",gap:8}},
+                e("button",{onClick:closeA,style:{...btnGray,flex:1}},"취소"),
+                e("button",{onClick:submitPw,style:{...btnBlue,flex:1}},"확인")
+              )
+            )
+          : e("div",null,
+              e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
+                e("p",{style:{fontSize:18,fontWeight:700}},"관리자 설정"),
+                e("button",{onClick:logoutA,style:{fontSize:13,color:"#f45452",background:"none",border:"none",cursor:"pointer",fontWeight:600}},"로그아웃")
+              ),
+              e("div",{style:{display:"flex",gap:6,marginBottom:18}},
+                e("button",{style:atb("schedules"),onClick:()=>setAView("schedules")},"일정 관리"),
+                e("button",{style:atb("votes"),onClick:()=>setAView("votes")},"투표 마감")
+              ),
+              aView==="schedules" && e("div",null,
+                e("div",{style:{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #eee"}},
+                  e("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"날짜"),
+                  e("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"종목"),
+                  e("span",{style:{width:32}})
+                ),
+                e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12}},
+                  eScheds.map(s=>e("div",{key:s.id,style:{display:"flex",gap:6,alignItems:"center"}},
+                    e("input",{className:"inp",placeholder:"3월 20일 (금)",value:s.date,
+                      onChange:ev=>updES(s.id,"date",ev.target.value),style:{flex:1,fontSize:13}}),
+                    e("input",{className:"inp",placeholder:"종목",value:s.event,
+                      onChange:ev=>updES(s.id,"event",ev.target.value),style:{flex:1,fontSize:13}}),
+                    e("button",{onClick:()=>removeES(s.id),
+                      style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
+                  ))
+                ),
+                e("button",{onClick:addES,style:{width:"100%",padding:"10px 0",borderRadius:12,
+                  border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 일정 추가"),
+                e("div",{style:{display:"flex",gap:8}},
+                  e("button",{onClick:closeA,style:{...btnGray,flex:1}},"취소"),
+                  e("button",{onClick:saveA,style:{...btnBlue,flex:1}},"저장")
+                )
+              ),
+              aView==="votes" && e("div",null,
+                e("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"일정별로 투표를 마감하거나 다시 열 수 있어요"),
+                e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:16}},
+                  eScheds.map(s=>e("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
+                    e("div",null,
+                      e("p",{style:{fontSize:14,fontWeight:600}},s.date||"날짜 미설정"),
+                      e("p",{style:{marginTop:2,fontSize:12,color:"#888"}},s.event||"종목 미설정")
+                    ),
+                    e("button",{onClick:()=>toggleC(s.id),style:{
+                      padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",
+                      background:s.closed?"#e6faf3":"#fff0f0",color:s.closed?"#00805a":"#f45452"}},s.closed?"열기":"마감")
+                  ))
+                ),
+                e("div",{style:{display:"flex",gap:8}},
+                  e("button",{onClick:closeA,style:{...btnGray,flex:1}},"취소"),
+                  e("button",{onClick:saveA,style:{...btnBlue,flex:1}},"저장")
+                )
+              )
+            )
+      )
+    )
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
 </body>
 </html>
