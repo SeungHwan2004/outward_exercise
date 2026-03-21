@@ -27,7 +27,6 @@ input,select,button{font-family:inherit}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-
 const firebaseConfig = {
   apiKey: "AIzaSyCt5pNuKsXH7K_VuZTlSKQ2qI8cSFkrRdk",
   authDomain: "outward-exercise-e35c1.firebaseapp.com",
@@ -39,7 +38,6 @@ const firebaseConfig = {
 };
   
 const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
-
 
 const DEF_SCHEDS = [
   {id:"s1",date:"3월 20일 (금)",event:"축구",closed:false},
@@ -159,13 +157,19 @@ function App(){
     if(!me||scheds.find(s=>s.id===sid)&&scheds.find(s=>s.id===sid).closed)return;
     db.ref("votes/"+sid+"/"+me.id).set(val);
   };
-  const getVote=sid=>(votes[sid]||{})[me&&me.id]??null;
+  const getVote=sid=>{
+    // id 타입 불일치 대응: 숫자/문자열 둘 다 시도
+    const sv=votes[sid]||votes[String(sid)]||votes[Number(sid)]||{};
+    const uid=me&&me.id;
+    return sv[uid]||sv[String(uid)]||sv[Number(uid)]||null;
+  };
 
   /* 통계 */
   const stats=scheds.map(s=>{
-    const sv=votes[s.id]||{};
-    const yes=roster.filter(m=>sv[m.id]==="yes").length;
-    const no=roster.filter(m=>sv[m.id]==="no").length;
+    // 일정 id 타입 불일치 대응
+    const sv=votes[s.id]||votes[String(s.id)]||votes[Number(s.id)]||{};
+    const yes=roster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes"||sv[Number(m.id)]==="yes").length;
+    const no =roster.filter(m=>sv[m.id]==="no" ||sv[String(m.id)]==="no" ||sv[Number(m.id)]==="no" ).length;
     const full=yes>=QUOTA;
     const need=Math.max(QUOTA-yes,0);
     return{id:s.id,label:s.date.slice(0,5),yes,no,full,need};
@@ -351,7 +355,8 @@ function App(){
             ? h("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
             : h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
                 roster.map(m=>{
-                  const v=(votes[safeTab]||{})[m.id]||null;
+                  const sv=votes[safeTab]||votes[String(safeTab)]||votes[Number(safeTab)]||{};
+                  const v=sv[m.id]||sv[String(m.id)]||sv[Number(m.id)]||null;
                   return h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
                     h("div",{style:{display:"flex",alignItems:"center",gap:10}},
                       h("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
