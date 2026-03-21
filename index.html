@@ -39,7 +39,6 @@ const firebaseConfig = {
   
 const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
 
-
 const DEF_SCHEDS = [
   {id:"s1",date:"3월 20일 (금)",event:"축구",closed:false},
   {id:"s2",date:"4월 3일 (금)",event:"축구",closed:false},
@@ -124,8 +123,7 @@ function App(){
     db.ref("roster").on("value", snap=>{ const v=snap.val(); setRoster(v?Object.values(v):[]); });
     db.ref("votes").on("value", snap=>{
       const raw=snap.val()||{};
-      console.log("=== votes raw ===", JSON.stringify(raw));
-      console.log("=== scheds ids ===", scheds.map(s=>s.id));
+      // scheds id와 votes key 매핑: 숫자만 추출해서 같으면 동일 일정으로 취급
       setVotes(raw);
     });
     return ()=>{ db.ref("scheds").off(); db.ref("roster").off(); db.ref("votes").off(); };
@@ -163,19 +161,29 @@ function App(){
     if(!me||scheds.find(s=>s.id===sid)&&scheds.find(s=>s.id===sid).closed)return;
     db.ref("votes/"+sid+"/"+me.id).set(val);
   };
+  // votes 조회 시 id 숫자 기준으로 모든 관련 key를 합산
+  const getSchedVotes=(sid)=>{
+    const num=String(sid).replace(/[^0-9]/g,"");
+    const merged={};
+    Object.keys(votes).forEach(k=>{
+      if(String(k).replace(/[^0-9]/g,"")===num){
+        Object.assign(merged, votes[k]);
+      }
+    });
+    return merged;
+  };
+
   const getVote=sid=>{
-    // id 타입 불일치 대응: 숫자/문자열 둘 다 시도
-    const sv=votes[sid]||votes[String(sid)]||votes[Number(sid)]||{};
+    const sv=getSchedVotes(sid);
     const uid=me&&me.id;
-    return sv[uid]||sv[String(uid)]||sv[Number(uid)]||null;
+    return sv[uid]||sv[String(uid)]||null;
   };
 
   /* 통계 */
   const stats=scheds.map(s=>{
-    // 일정 id 타입 불일치 대응
-    const sv=votes[s.id]||votes[String(s.id)]||votes[Number(s.id)]||{};
-    const yes=roster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes"||sv[Number(m.id)]==="yes").length;
-    const no =roster.filter(m=>sv[m.id]==="no" ||sv[String(m.id)]==="no" ||sv[Number(m.id)]==="no" ).length;
+    const sv=getSchedVotes(s.id);
+    const yes=roster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes").length;
+    const no =roster.filter(m=>sv[m.id]==="no" ||sv[String(m.id)]==="no" ).length;
     const full=yes>=QUOTA;
     const need=Math.max(QUOTA-yes,0);
     return{id:s.id,label:s.date.slice(0,5),yes,no,full,need};
@@ -195,9 +203,12 @@ function App(){
   };
   const saveA=()=>{
     const ns=eScheds.filter(s=>s.date.trim());
-    // id를 문자열로 통일하고 저장
     const obj={};
-    ns.forEach(s=>{ const key="s"+s.id; obj[key]=Object.assign({},s,{id:key}); });
+    // id를 항상 고정 인덱스 기반으로 생성 (s1, s2, s3...)
+    ns.forEach((s,i)=>{
+      const key="s"+(i+1);
+      obj[key]=Object.assign({},s,{id:key});
+    });
     db.ref("scheds").set(obj).then(()=>{ setAOpen(false); }).catch(err=>alert("저장 실패: "+err.message));
   };
 
@@ -225,10 +236,10 @@ function App(){
       h("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
         h("h1",{style:{fontSize:20,fontWeight:700,marginBottom:6}},"영외체련 인원조사"),
         h("p",{style:{fontSize:13,color:"#888",marginBottom:24,lineHeight:1.6}},
-          isReg?"처음 방문이신가요? 기수·비밀번호(네 자리 숫자)·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
+          isReg?"처음 방문이신가요? 기수·비밀번호(숫자 네 자리)·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
         ["rank","serial","name"].map((field,i)=>
           h("div",{key:field,style:{marginBottom:10}},
-            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","비밀번호(네 자리 숫자)","이름"][i]),
+            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","비밀번호(숫자 네 자리)","이름"][i]),
             h("input",{className:"inp",type:"text",placeholder:field==="rank"?"예) 868":"",
               value:form[field],
               onChange:ev=>setForm(p=>Object.assign({},p,{[field]:ev.target.value})),
@@ -361,8 +372,8 @@ function App(){
             ? h("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
             : h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
                 roster.map(m=>{
-                  const sv=votes[safeTab]||votes[String(safeTab)]||votes[Number(safeTab)]||{};
-                  const v=sv[m.id]||sv[String(m.id)]||sv[Number(m.id)]||null;
+                  const sv=getSchedVotes(safeTab);
+                  const v=sv[m.id]||sv[String(m.id)]||null;
                   return h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
                     h("div",{style:{display:"flex",alignItems:"center",gap:10}},
                       h("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
