@@ -215,10 +215,10 @@ function App(){
       h("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
         h("h1",{style:{fontSize:20,fontWeight:700,marginBottom:6}},"영외체련 인원조사"),
         h("p",{style:{fontSize:13,color:"#888",marginBottom:24,lineHeight:1.6}},
-          isReg?"처음 방문이신가요? 기수·군번·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
+          isReg?"처음 방문이신가요? 기수·비밀번호(네 자리 숫자)·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
         ["rank","serial","name"].map((field,i)=>
           h("div",{key:field,style:{marginBottom:10}},
-            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","군번","이름"][i]),
+            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","비밀번호(네 자리 숫자)","이름"][i]),
             h("input",{className:"inp",type:"text",placeholder:field==="rank"?"예) 868":"",
               value:form[field],
               onChange:ev=>setForm(p=>Object.assign({},p,{[field]:ev.target.value})),
