@@ -27,6 +27,7 @@ input,select,button{font-family:inherit}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
+  
 const firebaseConfig = {
   apiKey: "AIzaSyCt5pNuKsXH7K_VuZTlSKQ2qI8cSFkrRdk",
   authDomain: "outward-exercise-e35c1.firebaseapp.com",
@@ -39,7 +40,7 @@ const firebaseConfig = {
 
 const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
 
-
+  
 const DEF_SCHEDS = [
   {id:"s1",date:"3월 20일 (금)",event:"축구",closed:false},
   {id:"s2",date:"4월 3일 (금)",event:"축구",closed:false},
@@ -78,7 +79,7 @@ function BarChart({data,maxVal,scheds,sel,onSel}){
     )),
     data.map((d,i)=>{
       const s=scheds.find(x=>x.id===d.id);
-      const full=s&&s.event==="축구"&&d.yes>=22;
+      const full=d.yes>=QUOTA;
       const cx=PL+gW*i+gW/2, isSel=sel===d.id;
       return h("g",{key:d.id,onClick:()=>onSel(d.id),style:{cursor:"pointer"}},
         isSel&&h("rect",{x:PL+gW*i+2,y:PT,width:gW-4,height:cH,fill:"rgba(49,130,246,0.07)",rx:6}),
@@ -215,10 +216,10 @@ function App(){
       h("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
         h("h1",{style:{fontSize:20,fontWeight:700,marginBottom:6}},"영외체련 인원조사"),
         h("p",{style:{fontSize:13,color:"#888",marginBottom:24,lineHeight:1.6}},
-          isReg?"처음 방문이신가요? 기수·비밀번호(네 자리 숫자)·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
+          isReg?"처음 방문이신가요? 기수·군번·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
         ["rank","serial","name"].map((field,i)=>
           h("div",{key:field,style:{marginBottom:10}},
-            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","비밀번호(네 자리 숫자)","이름"][i]),
+            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","군번","이름"][i]),
             h("input",{className:"inp",type:"text",placeholder:field==="rank"?"예) 868":"",
               value:form[field],
               onChange:ev=>setForm(p=>Object.assign({},p,{[field]:ev.target.value})),
@@ -329,7 +330,7 @@ function App(){
       selStat&&(()=>{
         const s=scheds.find(x=>x.id===safeTab);
         if(!s)return null;
-        const full=s.event==="축구"&&selStat.yes>=22;
+        const full=selStat.yes>=QUOTA;
         return h("div",{className:"card"},
           h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
             h("div",null,
@@ -415,20 +416,17 @@ function App(){
               aView==="votes"&&h("div",null,
                 h("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"일정별로 투표를 마감하거나 다시 열 수 있어요"),
                 h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:16}},
-                  eScheds.map(s=>h("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
+                  scheds.map(s=>h("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
                     h("div",null,
                       h("p",{style:{fontSize:14,fontWeight:600}},s.date||"날짜 미설정"),
                       h("p",{style:{marginTop:2,fontSize:12,color:"#888"}},s.event||"종목 미설정")
                     ),
-                    h("button",{onClick:()=>setEScheds(p=>p.map(x=>x.id===s.id?Object.assign({},x,{closed:!x.closed}):x)),
+                    h("button",{onClick:()=>db.ref("scheds/"+s.id+"/closed").set(!s.closed),
                       style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",
                         background:s.closed?"#e6faf3":"#fff0f0",color:s.closed?"#00805a":"#f45452"}},s.closed?"열기":"마감")
                   ))
                 ),
-                h("div",{style:{display:"flex",gap:8}},
-                  h("button",{onClick:closeA,style:Object.assign({},BG,{flex:1})},"취소"),
-                  h("button",{onClick:saveA,style:Object.assign({},BB,{flex:1})},"저장")
-                )
+                h("button",{onClick:closeA,style:Object.assign({},BG,{width:"100%"})},"닫기")
               )
             )
       )
