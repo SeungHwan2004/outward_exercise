@@ -39,6 +39,7 @@ const firebaseConfig = {
   
 const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
 
+
 const DEF_SCHEDS = [
   {id:"s1",date:"3월 20일 (금)",event:"축구",closed:false},
   {id:"s2",date:"4월 3일 (금)",event:"축구",closed:false},
@@ -121,7 +122,12 @@ function App(){
       setReady(true); clearTimeout(tid);
     }, err=>{ setDbErr("오류: "+err.message); clearTimeout(tid); });
     db.ref("roster").on("value", snap=>{ const v=snap.val(); setRoster(v?Object.values(v):[]); });
-    db.ref("votes").on("value",  snap=>{ setVotes(snap.val()||{}); });
+    db.ref("votes").on("value", snap=>{
+      const raw=snap.val()||{};
+      console.log("=== votes raw ===", JSON.stringify(raw));
+      console.log("=== scheds ids ===", scheds.map(s=>s.id));
+      setVotes(raw);
+    });
     return ()=>{ db.ref("scheds").off(); db.ref("roster").off(); db.ref("votes").off(); };
   },[]);
 
