@@ -27,6 +27,7 @@ input,select,button{font-family:inherit}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
+
 const firebaseConfig = {
   apiKey: "AIzaSyCt5pNuKsXH7K_VuZTlSKQ2qI8cSFkrRdk",
   authDomain: "outward-exercise-e35c1.firebaseapp.com",
@@ -39,12 +40,13 @@ const firebaseConfig = {
 
 const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
 
+
 const DEF_SCHEDS = [
-  {id:1,date:"3월 20일 (금)",event:"축구",closed:false},
-  {id:2,date:"4월 3일 (금)",event:"축구",closed:false},
-  {id:3,date:"4월 17일 (금)",event:"배구",closed:false},
-  {id:4,date:"5월 1일 (금)",event:"축구",closed:false},
-  {id:5,date:"5월 15일 (금)",event:"족구",closed:false},
+  {id:"s1",date:"3월 20일 (금)",event:"축구",closed:false},
+  {id:"s2",date:"4월 3일 (금)",event:"축구",closed:false},
+  {id:"s3",date:"4월 17일 (금)",event:"배구",closed:false},
+  {id:"s4",date:"5월 1일 (금)",event:"축구",closed:false},
+  {id:"s5",date:"5월 15일 (금)",event:"족구",closed:false},
 ];
 
 async function sha256(str){
@@ -180,8 +182,10 @@ function App(){
   };
   const saveA=()=>{
     const ns=eScheds.filter(s=>s.date.trim());
-    db.ref("scheds").set(Object.fromEntries(ns.map(s=>[s.id,s])));
-    setAOpen(false);
+    // id를 문자열로 통일하고 저장
+    const obj={};
+    ns.forEach(s=>{ const key="s"+s.id; obj[key]=Object.assign({},s,{id:key}); });
+    db.ref("scheds").set(obj).then(()=>{ setAOpen(false); }).catch(err=>alert("저장 실패: "+err.message));
   };
 
   /* 스타일 */
@@ -208,10 +212,10 @@ function App(){
       h("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
         h("h1",{style:{fontSize:20,fontWeight:700,marginBottom:6}},"영외체련 인원조사"),
         h("p",{style:{fontSize:13,color:"#888",marginBottom:24,lineHeight:1.6}},
-          isReg?"처음 방문이신가요? 기수·비밀번호(숫자 네 자리)·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
+          isReg?"처음 방문이신가요? 기수·군번·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
         ["rank","serial","name"].map((field,i)=>
           h("div",{key:field,style:{marginBottom:10}},
-            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","비밀번호(숫자 네 자리)","이름"][i]),
+            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","군번","이름"][i]),
             h("input",{className:"inp",type:"text",placeholder:field==="rank"?"예) 868":"",
               value:form[field],
               onChange:ev=>setForm(p=>Object.assign({},p,{[field]:ev.target.value})),
@@ -379,7 +383,8 @@ function App(){
                       style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
                   ))
                 ),
-                h("button",{onClick:()=>setEScheds(p=>[...p,{id:Date.now(),date:"",event:"",closed:false}]),
+                // 새 일정 추가 시 id를 문자열로 생성
+    h("button",{onClick:()=>setEScheds(p=>[...p,{id:"s"+Date.now(),date:"",event:"",closed:false}]),
                   style:{width:"100%",padding:"10px 0",borderRadius:12,border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 일정 추가"),
                 h("div",{style:{display:"flex",gap:8}},
                   h("button",{onClick:closeA,style:Object.assign({},BG,{flex:1})},"취소"),
