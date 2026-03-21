@@ -27,7 +27,6 @@ input,select,button{font-family:inherit}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-  
 const firebaseConfig = {
   apiKey: "AIzaSyCt5pNuKsXH7K_VuZTlSKQ2qI8cSFkrRdk",
   authDomain: "outward-exercise-e35c1.firebaseapp.com",
@@ -37,10 +36,9 @@ const firebaseConfig = {
   messagingSenderId: "919136835385",
   appId: "1:919136835385:web:ceca85d8c790f77d08fae8"
 };
-
+  
 const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
 
-  
 const DEF_SCHEDS = [
   {id:"s1",date:"3월 20일 (금)",event:"축구",closed:false},
   {id:"s2",date:"4월 3일 (금)",event:"축구",closed:false},
@@ -219,7 +217,7 @@ function App(){
           isReg?"처음 방문이신가요? 기수·비밀번호(네 자리 숫자)·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
         ["rank","serial","name"].map((field,i)=>
           h("div",{key:field,style:{marginBottom:10}},
-            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","비밀번호(네 자리 숫자)","이름"][i]),
+            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","비밀번호(숫자 네 자리)","이름"][i]),
             h("input",{className:"inp",type:"text",placeholder:field==="rank"?"예) 868":"",
               value:form[field],
               onChange:ev=>setForm(p=>Object.assign({},p,{[field]:ev.target.value})),
@@ -302,7 +300,9 @@ function App(){
           h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#f45452",display:"inline-block"}}),"불참")
         ),
         h("p",{style:{fontSize:12,color:"#bbb",marginBottom:8}},"막대를 클릭하면 명단을 확인할 수 있어요"),
-        h(BarChart,{data:stats,maxVal,scheds,sel:safeTab,onSel:setDTab}),
+        scheds.length>0
+          ? h(BarChart,{data:stats,maxVal,scheds,sel:safeTab,onSel:setDTab})
+          : h("p",{style:{fontSize:13,color:"#bbb",textAlign:"center",padding:"2rem 0"}},"등록된 일정이 없습니다"),
         h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginTop:12}},
           stats.map(d=>{
             const s=scheds.find(x=>x.id===d.id);
@@ -327,7 +327,7 @@ function App(){
           })
         )
       ),
-      selStat&&(()=>{
+      safeTab&&selStat&&(()=>{
         const s=scheds.find(x=>x.id===safeTab);
         if(!s)return null;
         const full=selStat.yes>=QUOTA;
@@ -346,21 +346,23 @@ function App(){
               full&&h("span",{style:{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,background:"#e8f0fe",color:"#1a56db"}},"인원 충족")
             )
           ),
-          h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-            roster.map(m=>{
-              const v=(votes[safeTab]||{})[m.id]||null;
-              return h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
-                h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                  h("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
-                  h("div",null,
-                    h("p",{style:{fontSize:14,fontWeight:600}},m.name),
-                    m.rank&&h("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
-                  )
-                ),
-                h("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},v==="yes"?"참석":v==="no"?"불참":"미투표")
-              );
-            })
-          )
+          roster.length===0
+            ? h("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
+            : h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+                roster.map(m=>{
+                  const v=(votes[safeTab]||{})[m.id]||null;
+                  return h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
+                    h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                      h("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
+                      h("div",null,
+                        h("p",{style:{fontSize:14,fontWeight:600}},m.name),
+                        m.rank&&h("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
+                      )
+                    ),
+                    h("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},v==="yes"?"참석":v==="no"?"불참":"미투표")
+                  );
+                })
+              )
         );
       })()
     ),
