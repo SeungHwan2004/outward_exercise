@@ -19,10 +19,8 @@ input,select,button{font-family:inherit}
 <body>
 <div id="root"><p style="text-align:center;padding:4rem;color:#aaa;font-size:15px">불러오는 중...</p></div>
 
-<!-- 1. React -->
 <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-<!-- 2. Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
@@ -36,7 +34,7 @@ const firebaseConfig = {
   messagingSenderId: "919136835385",
   appId: "1:919136835385:web:ceca85d8c790f77d08fae8"
 };
-  
+
 const ADMIN_PW_HASH = "91b1e240ed103f291c16765cb201a9e4f2c23ff4057050b9fd78571f373ace3d";
 
 const DEF_SCHEDS = [
@@ -58,12 +56,60 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 const LS_ME = "ex_me_v5";
 const QUOTA = 20;
 
-/* Firebase 초기화 */
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const {useState,useEffect} = React;
 const h = React.createElement;
+
+/* ── 정렬 헬퍼: 기수 내림차순 ── */
+function sortByRankDesc(arr){
+  return [...arr].sort((a,b)=>Number(b.rank||0)-Number(a.rank||0));
+}
+
+/* ── 워드 파일 생성 ── */
+function exportWord(sched, yesMembers){
+  const sorted = sortByRankDesc(yesMembers);
+  const rows = sorted.map((m,i)=>`
+    <tr>
+      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${i+1}</td>
+      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${m.rank}기</td>
+      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${m.name}</td>
+    </tr>`).join("");
+
+  const html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office"
+          xmlns:w="urn:schemas-microsoft-com:office:word"
+          xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="UTF-8">
+    <style>
+      body{font-family:"맑은 고딕",sans-serif;margin:40px;}
+      h2{font-size:16pt;margin-bottom:8px;}
+      p{font-size:11pt;margin-bottom:16px;color:#555;}
+      table{border-collapse:collapse;width:100%;font-size:11pt;}
+      th{border:1px solid #000;padding:7px 10px;background:#f0f0f0;text-align:center;}
+    </style></head>
+    <body>
+      <h2>영외체련 참석 인원 명단</h2>
+      <p>${sched.date} &nbsp;·&nbsp; ${sched.event} &nbsp;·&nbsp; 총 ${sorted.length}명</p>
+      <table>
+        <thead><tr>
+          <th style="width:40px;">순번</th>
+          <th style="width:60px;">기수</th>
+          <th>이름</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </body></html>`;
+
+  const blob = new Blob(['\ufeff'+html], {type:"application/msword"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `영외체련_${sched.date.replace(/\s/g,"")}_참석명단.doc`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 /* ── SVG 차트 ── */
 function BarChart({data,maxVal,scheds,sel,onSel}){
@@ -77,7 +123,6 @@ function BarChart({data,maxVal,scheds,sel,onSel}){
       h("text",{x:PL-4,y:PT+ys(v)+4,textAnchor:"end",fontSize:10,fill:"#bbb"},v)
     )),
     data.map((d,i)=>{
-      const s=scheds.find(x=>x.id===d.id);
       const full=d.yes>=QUOTA;
       const cx=PL+gW*i+gW/2, isSel=sel===d.id;
       return h("g",{key:d.id,onClick:()=>onSel(d.id),style:{cursor:"pointer"}},
@@ -92,41 +137,36 @@ function BarChart({data,maxVal,scheds,sel,onSel}){
 
 /* ── 메인 앱 ── */
 function App(){
-  const [ready,setReady]   = useState(false);
-  const [dbErr,setDbErr]   = useState("");
-  const [scheds,setScheds] = useState(DEF_SCHEDS);
-  const [roster,setRoster] = useState([]);
-  const [votes,setVotes]   = useState({});
-  const [me,setMe]         = useState(()=>lsGet(LS_ME,null));
-  const [step,setStep]     = useState(()=>lsGet(LS_ME,null)?"main":"reg");
-  // step: reg | login | main
-  const [form,setForm]     = useState({rank:"",serial:"",name:""});
+  const [ready,setReady]    = useState(false);
+  const [dbErr,setDbErr]    = useState("");
+  const [scheds,setScheds]  = useState(DEF_SCHEDS);
+  const [roster,setRoster]  = useState([]);
+  const [votes,setVotes]    = useState({});
+  const [me,setMe]          = useState(()=>lsGet(LS_ME,null));
+  const [step,setStep]      = useState(()=>lsGet(LS_ME,null)?"main":"reg");
+  const [form,setForm]      = useState({rank:"",serial:"",name:""});
   const [authErr,setAuthErr]= useState("");
-  const [tab,setTab]       = useState("vote");
-  const [dTab,setDTab]     = useState(null);
-  const [aOpen,setAOpen]   = useState(false);
-  const [pw,setPw]         = useState("");
-  const [pwErr,setPwErr]   = useState(false);
+  const [tab,setTab]        = useState("vote");
+  const [dTab,setDTab]      = useState(null);
+  const [aOpen,setAOpen]    = useState(false);
+  const [pw,setPw]          = useState("");
+  const [pwErr,setPwErr]    = useState(false);
   const [isAdmin,setIsAdmin]= useState(false);
   const [eScheds,setEScheds]= useState([]);
-  const [aView,setAView]   = useState("schedules");
+  const [aView,setAView]    = useState("schedules");
 
   /* Firebase 구독 */
   useEffect(()=>{
-    const tid = setTimeout(()=>setDbErr("Firebase 연결 실패.\ndatabaseURL을 확인해 주세요:\n"+firebaseConfig.databaseURL), 10000);
-    db.ref("scheds").on("value", snap=>{
+    const tid=setTimeout(()=>setDbErr("Firebase 연결 실패.\ndatabaseURL을 확인해 주세요:\n"+firebaseConfig.databaseURL),10000);
+    db.ref("scheds").on("value",snap=>{
       const v=snap.val();
       if(v) setScheds(Object.values(v));
       else  db.ref("scheds").set(Object.fromEntries(DEF_SCHEDS.map(s=>[s.id,s])));
       setReady(true); clearTimeout(tid);
-    }, err=>{ setDbErr("오류: "+err.message); clearTimeout(tid); });
-    db.ref("roster").on("value", snap=>{ const v=snap.val(); setRoster(v?Object.values(v):[]); });
-    db.ref("votes").on("value", snap=>{
-      const raw=snap.val()||{};
-      // scheds id와 votes key 매핑: 숫자만 추출해서 같으면 동일 일정으로 취급
-      setVotes(raw);
-    });
-    return ()=>{ db.ref("scheds").off(); db.ref("roster").off(); db.ref("votes").off(); };
+    },err=>{setDbErr("오류: "+err.message); clearTimeout(tid);});
+    db.ref("roster").on("value",snap=>{const v=snap.val();setRoster(v?Object.values(v):[]);});
+    db.ref("votes").on("value",snap=>{setVotes(snap.val()||{});});
+    return()=>{db.ref("scheds").off();db.ref("roster").off();db.ref("votes").off();};
   },[]);
 
   useEffect(()=>lsSet(LS_ME,me),[me]);
@@ -161,14 +201,13 @@ function App(){
     if(!me||scheds.find(s=>s.id===sid)&&scheds.find(s=>s.id===sid).closed)return;
     db.ref("votes/"+sid+"/"+me.id).set(val);
   };
-  // votes 조회 시 id 숫자 기준으로 모든 관련 key를 합산
+
+  /* votes 조회: 숫자 기준으로 모든 관련 key 합산 */
   const getSchedVotes=(sid)=>{
     const num=String(sid).replace(/[^0-9]/g,"");
     const merged={};
     Object.keys(votes).forEach(k=>{
-      if(String(k).replace(/[^0-9]/g,"")===num){
-        Object.assign(merged, votes[k]);
-      }
+      if(String(k).replace(/[^0-9]/g,"")===num) Object.assign(merged,votes[k]);
     });
     return merged;
   };
@@ -190,11 +229,11 @@ function App(){
   });
   const maxVal=Math.max(roster.length,1);
   const avg=roster.length?Math.round(stats.reduce((a,s)=>a+s.yes,0)/scheds.length):0;
-  const safeTab=scheds.find(s=>s.id===dTab)?dTab:scheds[0]&&scheds[0].id;
-  const selStat=stats.find(s=>s.id===safeTab);
+  const safeTab=scheds.find(s=>s.id===dTab)?dTab:(scheds[0]&&scheds[0].id)||null;
+  const selStat=stats.find(s=>s.id===safeTab)||null;
 
   /* 관리자 */
-  const openA=()=>{setAOpen(true);setPw("");setPwErr(false)};
+  const openA=()=>{setAOpen(true);setPw("");setPwErr(false);};
   const closeA=()=>setAOpen(false);
   const submitPw=async()=>{
     const hash=await sha256(pw);
@@ -204,12 +243,22 @@ function App(){
   const saveA=()=>{
     const ns=eScheds.filter(s=>s.date.trim());
     const obj={};
-    // id를 항상 고정 인덱스 기반으로 생성 (s1, s2, s3...)
     ns.forEach((s,i)=>{
       const key="s"+(i+1);
       obj[key]=Object.assign({},s,{id:key});
     });
-    db.ref("scheds").set(obj).then(()=>{ setAOpen(false); }).catch(err=>alert("저장 실패: "+err.message));
+    db.ref("scheds").set(obj).then(()=>setAOpen(false)).catch(err=>alert("저장 실패: "+err.message));
+  };
+
+  /* 마감 + 워드 내보내기 */
+  const handleClose=(s)=>{
+    db.ref("scheds/"+s.id+"/closed").set(!s.closed);
+    // 마감 시에만 워드 생성
+    if(!s.closed){
+      const sv=getSchedVotes(s.id);
+      const yesMembers=roster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes");
+      exportWord(s, yesMembers);
+    }
   };
 
   /* 스타일 */
@@ -220,16 +269,13 @@ function App(){
   const tb=k=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:tab===k?700:400,background:tab===k?"#fff":"transparent",color:tab===k?"#3182f6":"#888",border:"none",borderRadius:11,cursor:"pointer",boxShadow:tab===k?"0 1px 4px rgba(0,0,0,0.08)":"none"});
   const atb=k=>({flex:1,padding:"8px 0",fontSize:13,fontWeight:aView===k?700:400,border:"none",borderRadius:10,cursor:"pointer",background:aView===k?"#3182f6":"#f5f6f8",color:aView===k?"#fff":"#888"});
 
-  /* 오류 */
   if(dbErr) return h("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",padding:"2rem",textAlign:"center"}},
     h("p",{style:{fontSize:16,fontWeight:700,color:"#f45452",marginBottom:12}},"연결 오류"),
     h("p",{style:{fontSize:13,color:"#888",whiteSpace:"pre-line",lineHeight:1.8}},dbErr)
   );
-
-  /* 로딩 */
   if(!ready) return h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontSize:15,color:"#aaa"}},"불러오는 중...");
 
-  /* 인증 화면 (reg / login) */
+  /* 인증 화면 */
   if(step!=="main"){
     const isReg=step==="reg";
     return h("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}},
@@ -279,7 +325,7 @@ function App(){
       h("button",{style:tb("dashboard"),onClick:()=>setTab("dashboard")},"현황")
     ),
 
-    /* 투표 탭 */
+    /* ── 투표 탭 ── */
     tab==="vote"&&h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
       scheds.map(s=>{
         const v=getVote(s.id);
@@ -304,7 +350,7 @@ function App(){
       })
     ),
 
-    /* 현황 탭 */
+    /* ── 현황 탭 ── */
     tab==="dashboard"&&h("div",null,
       h("div",{style:{display:"flex",gap:10,marginBottom:12}},
         [{l:"등록 인원",v:roster.length+"명"},{l:"평균 참석",v:avg+"명"}].map(c=>
@@ -329,18 +375,11 @@ function App(){
           stats.map(d=>{
             const s=scheds.find(x=>x.id===d.id);
             if(!s)return null;
-            return h("div",{key:d.id,style:{
-              padding:"10px 14px",borderRadius:12,
-              background:d.full?"#e6faf3":"#fff8e6",
-              display:"flex",alignItems:"center",justifyContent:"space-between"
-            }},
+            return h("div",{key:d.id,style:{padding:"10px 14px",borderRadius:12,background:d.full?"#e6faf3":"#fff8e6",display:"flex",alignItems:"center",justifyContent:"space-between"}},
               h("div",null,
                 h("p",{style:{fontSize:13,fontWeight:700,color:d.full?"#00805a":"#b35c00"}},s.date.slice(0,5)+" · "+s.event),
                 h("p",{style:{fontSize:12,marginTop:2,color:d.full?"#00a066":"#cc6a00"}},
-                  d.full
-                    ? "영외체련 확정! 현재 "+d.yes+"명 참석 예정"
-                    : d.need+"명만 더 모이면 영외체련 확정!"
-                )
+                  d.full?"영외체련 확정! 현재 "+d.yes+"명 참석 예정":d.need+"명만 더 모이면 영외체련 확정!")
               ),
               d.full
                 ? h("span",{style:{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,background:"#00b074",color:"#fff"}},"인원 충족")
@@ -349,10 +388,22 @@ function App(){
           })
         )
       ),
+
+      /* 명단 카드 - 참석>불참>미투표 / 기수 내림차순 */
       safeTab&&selStat&&(()=>{
         const s=scheds.find(x=>x.id===safeTab);
         if(!s)return null;
         const full=selStat.yes>=QUOTA;
+        const sv=getSchedVotes(safeTab);
+
+        const getV=m=>sv[m.id]||sv[String(m.id)]||null;
+        const ORDER={yes:0,no:1,null:2};
+        const sortedRoster=[...roster].sort((a,b)=>{
+          const va=getV(a)||"null", vb=getV(b)||"null";
+          if(ORDER[va]!==ORDER[vb]) return ORDER[va]-ORDER[vb];
+          return Number(b.rank||0)-Number(a.rank||0); // 기수 내림차순
+        });
+
         return h("div",{className:"card"},
           h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
             h("div",null,
@@ -371,9 +422,8 @@ function App(){
           roster.length===0
             ? h("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
             : h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-                roster.map(m=>{
-                  const sv=getSchedVotes(safeTab);
-                  const v=sv[m.id]||sv[String(m.id)]||null;
+                sortedRoster.map(m=>{
+                  const v=getV(m);
                   return h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
                     h("div",{style:{display:"flex",alignItems:"center",gap:10}},
                       h("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
@@ -390,7 +440,7 @@ function App(){
       })()
     ),
 
-    /* 관리자 모달 */
+    /* ── 관리자 모달 ── */
     aOpen&&h("div",{className:"overlay",onClick:ev=>{if(ev.target===ev.currentTarget)closeA()}},
       h("div",{className:"mbox"},
         !isAdmin
@@ -414,6 +464,7 @@ function App(){
                 h("button",{style:atb("schedules"),onClick:()=>setAView("schedules")},"일정 관리"),
                 h("button",{style:atb("votes"),onClick:()=>setAView("votes")},"투표 마감")
               ),
+
               aView==="schedules"&&h("div",null,
                 h("div",{style:{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #eee"}},
                   h("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"날짜"),
@@ -430,26 +481,32 @@ function App(){
                       style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
                   ))
                 ),
-                // 새 일정 추가 시 id를 문자열로 생성
-    h("button",{onClick:()=>setEScheds(p=>[...p,{id:"s"+Date.now(),date:"",event:"",closed:false}]),
+                h("button",{onClick:()=>setEScheds(p=>[...p,{id:"s"+Date.now(),date:"",event:"",closed:false}]),
                   style:{width:"100%",padding:"10px 0",borderRadius:12,border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 일정 추가"),
                 h("div",{style:{display:"flex",gap:8}},
                   h("button",{onClick:closeA,style:Object.assign({},BG,{flex:1})},"취소"),
                   h("button",{onClick:saveA,style:Object.assign({},BB,{flex:1})},"저장")
                 )
               ),
+
               aView==="votes"&&h("div",null,
-                h("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"일정별로 투표를 마감하거나 다시 열 수 있어요"),
+                h("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"마감 버튼을 누르면 투표가 마감되고 참석 명단 워드 파일이 저장됩니다"),
                 h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:16}},
-                  scheds.map(s=>h("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
-                    h("div",null,
-                      h("p",{style:{fontSize:14,fontWeight:600}},s.date||"날짜 미설정"),
-                      h("p",{style:{marginTop:2,fontSize:12,color:"#888"}},s.event||"종목 미설정")
-                    ),
-                    h("button",{onClick:()=>db.ref("scheds/"+s.id+"/closed").set(!s.closed),
-                      style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",
-                        background:s.closed?"#e6faf3":"#fff0f0",color:s.closed?"#00805a":"#f45452"}},s.closed?"열기":"마감")
-                  ))
+                  scheds.map(s=>{
+                    const sv=getSchedVotes(s.id);
+                    const yesCnt=roster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes").length;
+                    return h("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
+                      h("div",null,
+                        h("p",{style:{fontSize:14,fontWeight:600}},s.date||"날짜 미설정"),
+                        h("p",{style:{marginTop:2,fontSize:12,color:"#888"}},(s.event||"종목 미설정")+" · 현재 참석 "+yesCnt+"명")
+                      ),
+                      h("button",{
+                        onClick:()=>handleClose(s),
+                        style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",
+                          background:s.closed?"#e6faf3":"#fff0f0",color:s.closed?"#00805a":"#f45452"}
+                      },s.closed?"열기":"마감")
+                    );
+                  })
                 ),
                 h("button",{onClick:closeA,style:Object.assign({},BG,{width:"100%"})},"닫기")
               )
