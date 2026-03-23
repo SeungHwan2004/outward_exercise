@@ -64,7 +64,7 @@ const h = React.createElement;
 
 /* ── 정렬 헬퍼: 기수 내림차순 ── */
 function sortByRankDesc(arr){
-  return [...arr].sort((a,b)=<Number(b.rank||0)-Number(a.rank||0));
+  return [...arr].sort((a,b)=>Number(b.rank||0)-Number(a.rank||0));
 }
 
 /* ── 워드 파일 생성 ── */
