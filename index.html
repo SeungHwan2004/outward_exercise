@@ -134,7 +134,21 @@ function BarChart({data,maxVal,scheds,sel,onSel}){
     })
   );
 }
+/* ── 날짜 파싱 + 정렬 ── */
+function parseDateToNumber(dateStr){
+  // "3월 20일 (금)" → 20260320 형태 숫자
+  const match = dateStr.match(/(\d+)월\s*(\d+)일/);
+  if(!match) return 0;
+  const month = parseInt(match[1],10);
+  const day   = parseInt(match[2],10);
+  return 2026 * 10000 + month * 100 + day; // 연도 고정 (필요시 변경)
+}
 
+function sortSchedsByDate(arr){
+  return [...arr].sort((a,b)=>{
+    return parseDateToNumber(a.date) - parseDateToNumber(b.date);
+  });
+}
 /* ── 메인 앱 ── */
 function App(){
   const [ready,setReady]    = useState(false);
