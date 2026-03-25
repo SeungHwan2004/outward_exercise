@@ -243,11 +243,24 @@ function App(){
   const saveA=()=>{
     const ns=eScheds.filter(s=>s.date.trim());
     const obj={};
-    ns.forEach((s,i)=>{
-      const key="s"+(i+1);
-      obj[key]=Object.assign({},s,{id:key});
+    ns.forEach(s=>{
+      // 기존 id는 그대로 유지, 새 일정(ts 기반 id)도 그대로 사용
+      obj[s.id]=Object.assign({},s);
     });
-    db.ref("scheds").set(obj).then(()=>setAOpen(false)).catch(err=>alert("저장 실패: "+err.message));
+
+    // 삭제된 일정 id 찾기
+    const prevIds=scheds.map(s=>s.id);
+    const nextIds=ns.map(s=>s.id);
+    const removedIds=prevIds.filter(id=>!nextIds.includes(id));
+
+    // Firebase에 scheds 저장 후 삭제된 일정의 votes도 제거
+    db.ref("scheds").set(obj)
+      .then(()=>{
+        const delPromises=removedIds.map(id=>db.ref("votes/"+id).remove());
+        return Promise.all(delPromises);
+      })
+      .then(()=>setAOpen(false))
+      .catch(err=>alert("저장 실패: "+err.message));
   };
 
   /* 마감 + 워드 내보내기 */
