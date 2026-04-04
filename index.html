@@ -54,7 +54,7 @@ function lsGet(k,d){try{const r=localStorage.getItem(k);return r?JSON.parse(r):d
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 
 const LS_ME = "ex_me_v5";
-const QUOTA = 20;
+const QUOTA = 22;
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
@@ -338,7 +338,7 @@ function App(){
       h("div",null,
         h("h1",{style:{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}},"영외체련 인원조사"),
         h("p",{style:{marginTop:5,fontSize:13,color:"#888",lineHeight:1.65}},
-          "매월 2·4주 축구 고정 / 1·3주 타 종목 예정",h("br"),"투표 마감 : 전 주 일요일 오후 9시")
+          "매월 2·4주 축구 고정 / 1·3주 타 종목 예정",h("br"),"투표 마감 : 전 주 일요일 오후 9시 30분")
       ),
       h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}},
         h("button",{onClick:openA,style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,background:isAdmin?"#3182f6":"#f5f6f8",color:isAdmin?"#fff":"#555",border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}},isAdmin?"관리자 모드":"관리자"),
