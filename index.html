@@ -36,7 +36,7 @@ const firebaseConfig = {
   appId: "1:919136835385:web:ceca85d8c790f77d08fae8"
 };
 
-// ★ Firebase Authentication에서 관리자 계정의 UID로 교체하세요
+// ★ Firebase Authentication 관리자 UID로 교체하세요
 const ADMIN_UID = "3HZRDqIwiOhgLVPII6e7awdQ8CR2";
 
 const DEF_SCHEDS = [
@@ -47,23 +47,24 @@ const DEF_SCHEDS = [
   {id:"s5",date:"5월 15일 (금)",event:"족구",closed:false},
 ];
 
+// 경기 화성 좌표
+const WEATHER_LAT = 37.1996;
+const WEATHER_LON = 126.8317;
+
+firebase.initializeApp(firebaseConfig);
+const db   = firebase.database();
+const auth = firebase.auth();
+
+const {useState, useEffect, useRef} = React;
+const h = React.createElement;
+
 function lsGet(k,d){try{const r=localStorage.getItem(k);return r?JSON.parse(r):d}catch{return d}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 
 const LS_ME = "ex_me_v5";
 const QUOTA = 22;
 
-firebase.initializeApp(firebaseConfig);
-const db   = firebase.database();
-const auth = firebase.auth();
-
-const {useState,useEffect} = React;
-const h = React.createElement;
-
-function sortByRankDesc(arr){
-  return [...arr].sort((a,b)=>Number(b.rank||0)-Number(a.rank||0));
-}
-
+/* ── 날짜 파싱 ── */
 function parseDateToNumber(dateStr){
   const m=dateStr.match(/(\d+)월\s*(\d+)일/);
   if(!m)return 0;
@@ -73,22 +74,49 @@ function sortSchedsByDate(arr){
   return [...arr].sort((a,b)=>parseDateToNumber(a.date)-parseDateToNumber(b.date));
 }
 
-function exportWord(sched,yesMembers){
-  const sorted=sortByRankDesc(yesMembers);
-  const rows=sorted.map((m,i)=>`
-    <tr>
-      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${i+1}</td>
-      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${m.rank}기</td>
-      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${m.name}</td>
-    </tr>`).join("");
-  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-    <head><meta charset="UTF-8"><style>body{font-family:"맑은 고딕",sans-serif;margin:40px;}h2{font-size:16pt;margin-bottom:8px;}p{font-size:11pt;margin-bottom:16px;color:#555;}table{border-collapse:collapse;width:100%;font-size:11pt;}th{border:1px solid #000;padding:7px 10px;background:#f0f0f0;text-align:center;}</style></head>
-    <body><h2>영외체련 참석 인원 명단</h2><p>${sched.date} · ${sched.event} · 총 ${sorted.length}명</p>
-    <table><thead><tr><th style="width:40px;">순번</th><th style="width:60px;">기수</th><th>이름</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
-  const blob=new Blob(['\ufeff'+html],{type:"application/msword"});
+// "4월 3일 (금)" → Date 객체 (2026년 기준)
+function schedStrToDate(dateStr){
+  const m=dateStr.match(/(\d+)월\s*(\d+)일/);
+  if(!m)return null;
+  return new Date(2026, parseInt(m[1],10)-1, parseInt(m[2],10));
+}
+
+/* ── 날씨 WMO 코드 → 아이콘 + 설명 ── */
+function wmoToIcon(code){
+  if(code===0) return{icon:"☀️",desc:"맑음"};
+  if(code<=2)  return{icon:"🌤️",desc:"구름조금"};
+  if(code<=3)  return{icon:"☁️",desc:"흐림"};
+  if(code<=49) return{icon:"🌫️",desc:"안개"};
+  if(code<=59) return{icon:"🌦️",desc:"이슬비"};
+  if(code<=69) return{icon:"🌧️",desc:"비"};
+  if(code<=79) return{icon:"🌨️",desc:"눈"};
+  if(code<=84) return{icon:"🌧️",desc:"소나기"};
+  if(code<=99) return{icon:"⛈️",desc:"뇌우"};
+  return{icon:"🌡️",desc:"-"};
+}
+
+/* ── txt 파일 생성 ── */
+function exportTxt(sched, yesMembers){
+  const sorted=[...yesMembers].sort((a,b)=>Number(b.rank||0)-Number(a.rank||0));
+  const lines=[
+    "========================================",
+    "  영외체련 참석 인원 명단",
+    "========================================",
+    "  일정: "+sched.date,
+    "  종목: "+sched.event,
+    "  총 인원: "+sorted.length+"명",
+    "----------------------------------------",
+    "  순번  기수   이름",
+    "----------------------------------------",
+    ...sorted.map((m,i)=>"  "+(i+1)+"      "+m.rank+"기    "+m.name),
+    "----------------------------------------",
+  ];
+  const blob=new Blob([lines.join("\r\n")],{type:"text/plain;charset=utf-8"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
-  a.href=url; a.download=`영외체련_${sched.date.replace(/\s/g,"")}_참석명단.doc`; a.click();
+  a.href=url;
+  a.download="영외체련_"+sched.date.replace(/[\s()]/g,"")+"_참석명단.txt";
+  a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -116,45 +144,60 @@ function BarChart({data,maxVal,sel,onSel}){
   );
 }
 
-/* ── 앱 ── */
+/* ── 날씨 훅 ── */
+function useWeather(){
+  const [weather,setWeather]=useState({}); // key: "YYYY-MM-DD" → {temp,precip,wmo}
+  useEffect(()=>{
+    const url="https://api.open-meteo.com/v1/forecast"
+      +"?latitude="+WEATHER_LAT+"&longitude="+WEATHER_LON
+      +"&daily=weathercode,temperature_2m_max,precipitation_probability_max"
+      +"&timezone=Asia%2FSeoul&forecast_days=14";
+    fetch(url).then(r=>r.json()).then(data=>{
+      const map={};
+      (data.daily.time||[]).forEach((date,i)=>{
+        map[date]={
+          temp: data.daily.temperature_2m_max[i],
+          precip: data.daily.precipitation_probability_max[i],
+          wmo: data.daily.weathercode[i],
+        };
+      });
+      setWeather(map);
+    }).catch(()=>{});
+  },[]);
+  return weather;
+}
+
+/* ── 메인 앱 ── */
 function App(){
-  const [ready,setReady]       = useState(false);
-  const [dbErr,setDbErr]       = useState("");
-  const [scheds,setScheds]     = useState(DEF_SCHEDS);
-  const [roster,setRoster]     = useState([]);
-  const [votes,setVotes]       = useState({});
-  const [me,setMe]             = useState(()=>lsGet(LS_ME,null));
-  const [step,setStep]         = useState(()=>lsGet(LS_ME,null)?"main":"reg");
-  const [form,setForm]         = useState({rank:"",serial:"",name:""});
-  const [authErr,setAuthErr]   = useState("");
-  const [tab,setTab]           = useState("vote");
-  const [dTab,setDTab]         = useState(null);
+  const [ready,setReady]        = useState(false);
+  const [dbErr,setDbErr]        = useState("");
+  const [scheds,setScheds]      = useState(DEF_SCHEDS);
+  const [roster,setRoster]      = useState([]);
+  const [votes,setVotes]        = useState({});
+  const [me,setMe]              = useState(()=>lsGet(LS_ME,null));
+  const [step,setStep]          = useState(()=>lsGet(LS_ME,null)?"main":"reg");
+  const [form,setForm]          = useState({rank:"",serial:"",name:""});
+  const [authErr,setAuthErr]    = useState("");
+  const [tab,setTab]            = useState("vote");
+  const [dTab,setDTab]          = useState(null);
+  const [isAdmin,setIsAdmin]    = useState(false);
+  const [aOpen,setAOpen]        = useState(false);
+  const [adminEmail,setAdminEmail]=useState("");
+  const [adminPw,setAdminPw]    = useState("");
+  const [adminErr,setAdminErr]  = useState("");
+  const [eScheds,setEScheds]    = useState([]);
+  const [aView,setAView]        = useState("schedules");
+  const weather = useWeather();
 
-  // 관리자: Firebase Auth 기반
-  const [aOpen,setAOpen]       = useState(false);
-  const [adminUser,setAdminUser]= useState(null); // Firebase Auth user
-  const [isAdmin,setIsAdmin]   = useState(false);
-  const [adminEmail,setAdminEmail]= useState("");
-  const [adminPw,setAdminPw]   = useState("");
-  const [adminErr,setAdminErr] = useState("");
-  const [eScheds,setEScheds]   = useState([]);
-  const [aView,setAView]       = useState("schedules");
-  // 승인 대기 탭
-  const [pendingView,setPendingView] = useState(false);
-
-  /* Firebase Auth 상태 감지 */
+  /* Firebase Auth */
   useEffect(()=>{
     const unsub=auth.onAuthStateChanged(user=>{
-      if(user&&user.uid===ADMIN_UID){
-        setAdminUser(user); setIsAdmin(true);
-      } else {
-        setAdminUser(null); setIsAdmin(false);
-      }
+      setIsAdmin(!!(user&&user.uid===ADMIN_UID));
     });
     return()=>unsub();
   },[]);
 
-  /* Firebase DB 구독 */
+  /* Firebase DB */
   useEffect(()=>{
     const tid=setTimeout(()=>setDbErr("Firebase 연결 실패.\ndatabaseURL을 확인해 주세요:\n"+firebaseConfig.databaseURL),10000);
     db.ref("scheds").on("value",snap=>{
@@ -170,15 +213,13 @@ function App(){
 
   useEffect(()=>lsSet(LS_ME,me),[me]);
 
-  /* 승인된 멤버만 필터 */
-  const approvedRoster = roster.filter(r=>r.approved===true);
-  const pendingRoster  = roster.filter(r=>!r.approved);
+  const approvedRoster=roster.filter(r=>r.approved===true);
+  const pendingRoster =roster.filter(r=>!r.approved);
 
-  /* 등록 - pending 상태로 저장 */
+  /* 등록 */
   const doRegister=async()=>{
     const {rank,serial,name}=form;
     if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
-    // 한글 이름 기본 검증
     if(!/^[가-힣\s]{1,10}$/.test(name.trim())){setAuthErr("이름은 한글로 입력해 주세요.");return;}
     if(roster.find(r=>r.rank===rank.trim()&&r.name===name.trim())){
       setAuthErr("이미 등록된 이름입니다.\n본인이라면 '본인 확인'으로 로그인해 주세요.");return;
@@ -203,26 +244,23 @@ function App(){
     setAuthErr(""); setStep("main"); setTab("vote");
   };
 
-  /* 관리자 Firebase 로그인 */
+  /* 관리자 로그인/로그아웃 */
   const doAdminLogin=async()=>{
     setAdminErr("");
     try{
       const cred=await auth.signInWithEmailAndPassword(adminEmail,adminPw);
-      if(cred.user.uid!==ADMIN_UID){
-        await auth.signOut(); setAdminErr("관리자 계정이 아닙니다.");return;
-      }
+      if(cred.user.uid!==ADMIN_UID){await auth.signOut();setAdminErr("관리자 계정이 아닙니다.");return;}
       setEScheds(scheds.map(s=>Object.assign({},s)));
       setAdminErr("");
-    }catch(e){
-      setAdminErr("로그인 실패: "+e.message);
-    }
+    }catch(e){setAdminErr("로그인 실패: "+e.message);}
   };
-
-  const doAdminLogout=()=>{ auth.signOut(); setAOpen(false); };
+  const doAdminLogout=()=>{auth.signOut();setAOpen(false);};
 
   /* 투표 */
   const castVote=(sid,val)=>{
-    if(!me||scheds.find(s=>s.id===sid)&&scheds.find(s=>s.id===sid).closed)return;
+    if(!me)return;
+    const s=scheds.find(x=>x.id===sid);
+    if(s&&s.closed)return;
     db.ref("votes/"+sid+"/"+me.id).set(val);
   };
 
@@ -251,37 +289,54 @@ function App(){
     return{id:s.id,label:s.date.slice(0,5),yes,no,full,need};
   });
   const maxVal=Math.max(approvedRoster.length,1);
-  const avg=approvedRoster.length?Math.round(stats.reduce((a,s)=>a+s.yes,0)/scheds.length):0;
-  const safeTab=scheds.find(s=>s.id===dTab)?dTab:(scheds[0]&&scheds[0].id)||null;
+  const avg=approvedRoster.length?Math.round(stats.reduce((a,s)=>a+s.yes,0)/Math.max(scheds.length,1)):0;
+  const safeTab=scheds.find(s=>s.id===dTab)?dTab:(sortedScheds[0]&&sortedScheds[0].id)||null;
   const selStat=stats.find(s=>s.id===safeTab)||null;
 
-  /* 관리자 일정 저장 */
+  /* 날씨: 일정 날짜 → YYYY-MM-DD 변환 */
+  const schedToWeatherKey=(dateStr)=>{
+    const d=schedStrToDate(dateStr);
+    if(!d)return null;
+    const yyyy=d.getFullYear();
+    const mm=String(d.getMonth()+1).padStart(2,"0");
+    const dd=String(d.getDate()).padStart(2,"0");
+    return yyyy+"-"+mm+"-"+dd;
+  };
+
+  // 오늘로부터 14일 이내인지 확인
+  const isWithin14Days=(dateStr)=>{
+    const d=schedStrToDate(dateStr);
+    if(!d)return false;
+    const today=new Date(); today.setHours(0,0,0,0);
+    const diff=(d-today)/(1000*60*60*24);
+    return diff>=0&&diff<=14;
+  };
+
+  /* 관리자: 일정 저장 */
   const saveA=()=>{
     const ns=eScheds.filter(s=>s.date.trim());
     const obj={};
-    ns.forEach(s=>{ obj[s.id]=Object.assign({},s); });
-    const prevIds=scheds.map(s=>s.id);
-    const nextIds=ns.map(s=>s.id);
-    const removedIds=prevIds.filter(id=>!nextIds.includes(id));
+    ns.forEach(s=>{obj[s.id]=Object.assign({},s);});
+    const removedIds=scheds.map(s=>s.id).filter(id=>!ns.find(s=>s.id===id));
     db.ref("scheds").set(obj)
       .then(()=>Promise.all(removedIds.map(id=>db.ref("votes/"+id).remove())))
-      .then(()=>{ setPendingView(false); setAOpen(false); })
+      .then(()=>setAOpen(false))
       .catch(err=>alert("저장 실패: "+err.message));
   };
 
-  /* 마감 + 워드 */
+  /* 마감 + txt 내보내기 */
   const handleClose=(s)=>{
     db.ref("scheds/"+s.id+"/closed").set(!s.closed);
     if(!s.closed){
       const sv=getSchedVotes(s.id);
       const yesMembers=approvedRoster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes");
-      exportWord(s,yesMembers);
+      exportTxt(s,yesMembers);
     }
   };
 
-  /* 승인 / 거절 */
-  const approveUser=(m)=>db.ref("roster/"+m.id+"/approved").set(true);
-  const rejectUser=(m)=>db.ref("roster/"+m.id).remove();
+  /* 승인/거절 */
+  const approveUser=m=>db.ref("roster/"+m.id+"/approved").set(true);
+  const rejectUser =m=>db.ref("roster/"+m.id).remove();
 
   /* 스타일 */
   const BB={padding:"12px 0",borderRadius:12,border:"none",background:"#3182f6",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"};
@@ -291,13 +346,13 @@ function App(){
   const tb=k=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:tab===k?700:400,background:tab===k?"#fff":"transparent",color:tab===k?"#3182f6":"#888",border:"none",borderRadius:11,cursor:"pointer",boxShadow:tab===k?"0 1px 4px rgba(0,0,0,0.08)":"none"});
   const atb=k=>({flex:1,padding:"8px 0",fontSize:13,fontWeight:aView===k?700:400,border:"none",borderRadius:10,cursor:"pointer",background:aView===k?"#3182f6":"#f5f6f8",color:aView===k?"#fff":"#888"});
 
+  /* ── 렌더 ── */
   if(dbErr) return h("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",padding:"2rem",textAlign:"center"}},
     h("p",{style:{fontSize:16,fontWeight:700,color:"#f45452",marginBottom:12}},"연결 오류"),
     h("p",{style:{fontSize:13,color:"#888",whiteSpace:"pre-line",lineHeight:1.8}},dbErr)
   );
   if(!ready) return h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontSize:15,color:"#aaa"}},"불러오는 중...");
 
-  /* 승인 대기 화면 */
   if(step==="pending") return h("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}},
     h("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
       h("div",{style:{fontSize:40,marginBottom:16}},"⏳"),
@@ -307,7 +362,6 @@ function App(){
     )
   );
 
-  /* 인증 화면 */
   if(step!=="main"){
     const isReg=step==="reg";
     return h("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}},
@@ -361,7 +415,7 @@ function App(){
       h("button",{style:tb("dashboard"),onClick:()=>setTab("dashboard")},"현황")
     ),
 
-    /* 투표 탭 */
+    /* ── 투표 탭 ── */
     tab==="vote"&&h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
       sortedScheds.map(s=>{
         const v=getVote(s.id);
@@ -386,7 +440,7 @@ function App(){
       })
     ),
 
-    /* 현황 탭 */
+    /* ── 현황 탭 ── */
     tab==="dashboard"&&h("div",null,
       h("div",{style:{display:"flex",gap:10,marginBottom:12}},
         [{l:"등록 인원",v:approvedRoster.length+"명"},{l:"평균 참석",v:avg+"명"}].map(c=>
@@ -396,6 +450,8 @@ function App(){
           )
         )
       ),
+
+      /* 차트 */
       h("div",{className:"card"},
         h("p",{style:{marginBottom:10,fontSize:15,fontWeight:700}},"일정별 참석 인원"),
         h("div",{style:{display:"flex",gap:14,marginBottom:10,fontSize:12,color:"#888"}},
@@ -403,7 +459,7 @@ function App(){
           h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#3182f6",display:"inline-block"}}),"참석(인원충족)"),
           h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#f45452",display:"inline-block"}}),"불참")
         ),
-        h("p",{style:{fontSize:12,color:"#bbb",marginBottom:8}},"막대를 클릭하면 명단을 확인할 수 있어요"),
+        h("p",{style:{fontSize:12,color:"#bbb",marginBottom:8}},"막대를 클릭하면 해당 일정 현황을 확인할 수 있어요"),
         scheds.length>0
           ? h(BarChart,{data:stats,maxVal,sel:safeTab,onSel:setDTab})
           : h("p",{style:{fontSize:13,color:"#bbb",textAlign:"center",padding:"2rem 0"}},"등록된 일정이 없습니다"),
@@ -424,64 +480,56 @@ function App(){
           })
         )
       ),
+
+      /* 일정별 요약 (인원 수만 표시, 명단 미표시) */
       safeTab&&selStat&&(()=>{
-        const s=scheds.find(x=>x.id===safeTab);
+        const s=sortedScheds.find(x=>x.id===safeTab);
         if(!s)return null;
         const full=selStat.yes>=QUOTA;
-        const sv=getSchedVotes(safeTab);
-        const getV=m=>sv[m.id]||sv[String(m.id)]||null;
-        const ORDER={yes:0,no:1,null:2};
-        const sortedRoster=[...approvedRoster].sort((a,b)=>{
-          const va=getV(a)||"null",vb=getV(b)||"null";
-          if(ORDER[va]!==ORDER[vb])return ORDER[va]-ORDER[vb];
-          return Number(b.rank||0)-Number(a.rank||0);
-        });
+        const wKey=schedToWeatherKey(s.date);
+        const wData=wKey&&isWithin14Days(s.date)?weather[wKey]:null;
+        const wInfo=wData?wmoToIcon(wData.wmo):null;
+
         return h("div",{className:"card"},
-          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}},
             h("div",null,
               h("p",{style:{fontSize:15,fontWeight:700}},s.date+" · "+s.event),
-              h("div",{style:{display:"flex",gap:10,marginTop:4}},
-                h("span",{style:{fontSize:13,color:"#00805a",fontWeight:600}},"참석 "+selStat.yes+"명"),
-                h("span",{style:{fontSize:13,color:"#d63031",fontWeight:600}},"불참 "+selStat.no+"명"),
-                h("span",{style:{fontSize:13,color:"#bbb"}},"미투표 "+(approvedRoster.length-selStat.yes-selStat.no)+"명")
+              h("div",{style:{display:"flex",gap:10,marginTop:6,flexWrap:"wrap"}},
+                h("span",{style:{fontSize:14,color:"#00805a",fontWeight:700,background:"#e6faf3",padding:"4px 12px",borderRadius:20}},"참석 "+selStat.yes+"명"),
+                h("span",{style:{fontSize:14,color:"#d63031",fontWeight:700,background:"#fff0f0",padding:"4px 12px",borderRadius:20}},"불참 "+selStat.no+"명"),
+                h("span",{style:{fontSize:14,color:"#888",fontWeight:600,background:"#f5f6f8",padding:"4px 12px",borderRadius:20}},"미투표 "+(approvedRoster.length-selStat.yes-selStat.no)+"명")
               )
             ),
-            h("div",{style:{display:"flex",gap:6}},
+            h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}},
               s.closed&&h("span",{style:{fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
               full&&h("span",{style:{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,background:"#e8f0fe",color:"#1a56db"}},"인원 충족")
             )
           ),
-          approvedRoster.length===0
-            ? h("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
-            : h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-                sortedRoster.map(m=>{
-                  const v=getV(m);
-                  return h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
-                    h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                      h("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
-                      h("div",null,
-                        h("p",{style:{fontSize:14,fontWeight:600}},m.name),
-                        m.rank&&h("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
-                      )
-                    ),
-                    h("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},v==="yes"?"참석":v==="no"?"불참":"미투표")
-                  );
-                })
+          /* 날씨 */
+          wInfo
+            ? h("div",{style:{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#f8f9fb",borderRadius:14}},
+                h("span",{style:{fontSize:28}},wInfo.icon),
+                h("div",null,
+                  h("p",{style:{fontSize:13,fontWeight:600,color:"#333"}},wInfo.desc),
+                  h("p",{style:{fontSize:12,color:"#888",marginTop:2}},
+                    "최고 "+Math.round(wData.temp)+"°C  ·  강수확률 "+wData.precip+"%  ·  오후 1시 기준 (화성)")
+                )
               )
+            : h("p",{style:{fontSize:12,color:"#bbb",marginTop:4}},"날씨 정보는 2주 이내 일정에만 제공됩니다")
         );
       })()
     ),
 
-    /* 관리자 모달 */
+    /* ── 관리자 모달 ── */
     aOpen&&h("div",{className:"overlay",onClick:ev=>{if(ev.target===ev.currentTarget)setAOpen(false)}},
       h("div",{className:"mbox"},
         !isAdmin
           ? h("div",null,
-              h("p",{style:{marginBottom:20,fontSize:18,fontWeight:700}},"관리자 로그인"),
-              h("p",{style:{fontSize:12,color:"#888",marginBottom:14}},"Firebase Authentication 계정으로 로그인하세요"),
-              h("input",{className:"inp",placeholder:"이메일",value:adminEmail,type:"email",
+              h("p",{style:{marginBottom:6,fontSize:18,fontWeight:700}},"관리자 로그인"),
+              h("p",{style:{fontSize:12,color:"#888",marginBottom:16}},"Firebase 관리자 계정으로 로그인하세요"),
+              h("input",{className:"inp",placeholder:"이메일",type:"email",value:adminEmail,
                 onChange:ev=>setAdminEmail(ev.target.value),style:{marginBottom:8}}),
-              h("input",{className:"inp",placeholder:"비밀번호",value:adminPw,type:"password",
+              h("input",{className:"inp",placeholder:"비밀번호",type:"password",value:adminPw,
                 onChange:ev=>setAdminPw(ev.target.value),
                 onKeyDown:ev=>ev.key==="Enter"&&doAdminLogin(),
                 style:{marginBottom:8}}),
@@ -499,13 +547,12 @@ function App(){
               h("div",{style:{display:"flex",gap:6,marginBottom:18,flexWrap:"wrap"}},
                 h("button",{style:atb("schedules"),onClick:()=>setAView("schedules")},"일정 관리"),
                 h("button",{style:atb("votes"),onClick:()=>setAView("votes")},"투표 마감"),
-                h("button",{style:Object.assign({},atb("pending"),{position:"relative"}),onClick:()=>setAView("pending")},
+                h("button",{style:Object.assign({},atb("pending")),onClick:()=>setAView("pending")},
                   "가입 승인",
                   pendingRoster.length>0&&h("span",{style:{marginLeft:5,background:"#f45452",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:11,fontWeight:700}},pendingRoster.length)
                 )
               ),
 
-              /* 일정 관리 */
               aView==="schedules"&&h("div",null,
                 h("div",{style:{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #eee"}},
                   h("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"날짜"),
@@ -514,7 +561,7 @@ function App(){
                 ),
                 h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12}},
                   eScheds.map(s=>h("div",{key:s.id,style:{display:"flex",gap:6,alignItems:"center"}},
-                    h("input",{className:"inp",placeholder:"3월 20일 (금)",value:s.date,style:{flex:1,fontSize:13},
+                    h("input",{className:"inp",placeholder:"4월 17일 (목)",value:s.date,style:{flex:1,fontSize:13},
                       onChange:ev=>setEScheds(p=>p.map(x=>x.id===s.id?Object.assign({},x,{date:ev.target.value}):x))}),
                     h("input",{className:"inp",placeholder:"종목",value:s.event,style:{flex:1,fontSize:13},
                       onChange:ev=>setEScheds(p=>p.map(x=>x.id===s.id?Object.assign({},x,{event:ev.target.value}):x))}),
@@ -530,9 +577,8 @@ function App(){
                 )
               ),
 
-              /* 투표 마감 */
               aView==="votes"&&h("div",null,
-                h("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"마감 시 참석 명단 워드 파일이 저장됩니다"),
+                h("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"마감 시 참석 명단 txt 파일이 저장됩니다"),
                 h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:16}},
                   sortedScheds.map(s=>{
                     const sv=getSchedVotes(s.id);
@@ -551,589 +597,6 @@ function App(){
                 h("button",{onClick:()=>setAOpen(false),style:Object.assign({},BG,{width:"100%"})},"닫기")
               ),
 
-              /* 가입 승인 */
-              aView==="pending"&&h("div",null,
-                pendingRoster.length===0
-                  ? h("p",{style:{fontSize:13,color:"#bbb",textAlign:"center",padding:"1.5rem 0"}},"대기 중인 가입 신청이 없습니다")
-                  : h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-                      pendingRoster.map(m=>h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
-                        h("div",null,
-                          h("p",{style:{fontSize:14,fontWeight:600}},m.name),
-                          h("p",{style:{fontSize:12,color:"#888",marginTop:2}},m.rank+"기")
-                        ),
-                        h("div",{style:{display:"flex",gap:6}},
-                          h("button",{onClick:()=>approveUser(m),style:{padding:"6px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",background:"#e6faf3",color:"#00805a"}},"승인"),
-                          h("button",{onClick:()=>rejectUser(m),style:{padding:"6px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",background:"#fff0f0",color:"#f45452"}},"거절")
-                        )
-                      ))
-                    ),
-                h("div",{style:{marginTop:16}},
-                  h("button",{onClick:()=>setAOpen(false),style:Object.assign({},BG,{width:"100%"})},"닫기")
-                )
-              )
-            )
-      )
-    )
-  );
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
-</script>
-</body>
-</html><!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>영외체련 인원조사</title>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f8;color:#191919;min-height:100vh}
-input,select,button{font-family:inherit}
-.card{background:#fff;border-radius:20px;border:1px solid rgba(0,0,0,0.07);padding:20px;margin-bottom:12px}
-.inp{width:100%;padding:10px 14px;font-size:14px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.12);background:#fff;color:#191919;outline:none}
-.inp:focus{border-color:#3182f6}
-.inp:disabled{background:#f5f6f8;color:#999}
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:200;padding:1rem}
-.mbox{background:#fff;border-radius:24px;padding:28px 24px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto}
-</style>
-</head>
-<body>
-<div id="root"><p style="text-align:center;padding:4rem;color:#aaa;font-size:15px">불러오는 중...</p></div>
-
-<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-
-<script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCt5pNuKsXH7K_VuZTlSKQ2qI8cSFkrRdk",
-  authDomain: "outward-exercise-e35c1.firebaseapp.com",
-  databaseURL: "https://outward-exercise-e35c1-default-rtdb.firebaseio.com",
-  projectId: "outward-exercise-e35c1",
-  storageBucket: "outward-exercise-e35c1.firebasestorage.app",
-  messagingSenderId: "919136835385",
-  appId: "1:919136835385:web:ceca85d8c790f77d08fae8"
-};
-
-// ★ Firebase Authentication에서 관리자 계정의 UID로 교체하세요
-const ADMIN_UID = "YOUR_ADMIN_UID";
-
-const DEF_SCHEDS = [
-  {id:"s1",date:"3월 20일 (금)",event:"축구",closed:false},
-  {id:"s2",date:"4월 3일 (금)",event:"축구",closed:false},
-  {id:"s3",date:"4월 17일 (금)",event:"배구",closed:false},
-  {id:"s4",date:"5월 1일 (금)",event:"축구",closed:false},
-  {id:"s5",date:"5월 15일 (금)",event:"족구",closed:false},
-];
-
-function lsGet(k,d){try{const r=localStorage.getItem(k);return r?JSON.parse(r):d}catch{return d}}
-function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
-
-const LS_ME = "ex_me_v5";
-const QUOTA = 22;
-
-firebase.initializeApp(firebaseConfig);
-const db   = firebase.database();
-const auth = firebase.auth();
-
-const {useState,useEffect} = React;
-const h = React.createElement;
-
-function sortByRankDesc(arr){
-  return [...arr].sort((a,b)=>Number(b.rank||0)-Number(a.rank||0));
-}
-
-function parseDateToNumber(dateStr){
-  const m=dateStr.match(/(\d+)월\s*(\d+)일/);
-  if(!m)return 0;
-  return 2026*10000+parseInt(m[1],10)*100+parseInt(m[2],10);
-}
-function sortSchedsByDate(arr){
-  return [...arr].sort((a,b)=>parseDateToNumber(a.date)-parseDateToNumber(b.date));
-}
-
-function exportWord(sched,yesMembers){
-  const sorted=sortByRankDesc(yesMembers);
-  const rows=sorted.map((m,i)=>`
-    <tr>
-      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${i+1}</td>
-      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${m.rank}기</td>
-      <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${m.name}</td>
-    </tr>`).join("");
-  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-    <head><meta charset="UTF-8"><style>body{font-family:"맑은 고딕",sans-serif;margin:40px;}h2{font-size:16pt;margin-bottom:8px;}p{font-size:11pt;margin-bottom:16px;color:#555;}table{border-collapse:collapse;width:100%;font-size:11pt;}th{border:1px solid #000;padding:7px 10px;background:#f0f0f0;text-align:center;}</style></head>
-    <body><h2>영외체련 참석 인원 명단</h2><p>${sched.date} · ${sched.event} · 총 ${sorted.length}명</p>
-    <table><thead><tr><th style="width:40px;">순번</th><th style="width:60px;">기수</th><th>이름</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
-  const blob=new Blob(['\ufeff'+html],{type:"application/msword"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url; a.download=`영외체련_${sched.date.replace(/\s/g,"")}_참석명단.doc`; a.click();
-  URL.revokeObjectURL(url);
-}
-
-/* ── SVG 차트 ── */
-function BarChart({data,maxVal,sel,onSel}){
-  const W=340,H=160,PL=28,PB=24,PT=10,PR=10,cW=W-PL-PR,cH=H-PB-PT;
-  const n=data.length,gW=cW/n,bW=Math.min(gW*0.28,22);
-  const ys=v=>cH-(v/Math.max(maxVal,1))*cH;
-  const ticks=[0,Math.ceil(maxVal/2),maxVal].filter((v,i,a)=>a.indexOf(v)===i);
-  return h("svg",{viewBox:"0 0 "+W+" "+H,style:{width:"100%",height:"auto"}},
-    ticks.map(v=>h("g",{key:v},
-      h("line",{x1:PL,x2:W-PR,y1:PT+ys(v),y2:PT+ys(v),stroke:"rgba(0,0,0,0.06)",strokeWidth:1}),
-      h("text",{x:PL-4,y:PT+ys(v)+4,textAnchor:"end",fontSize:10,fill:"#bbb"},v)
-    )),
-    data.map((d,i)=>{
-      const full=d.yes>=QUOTA;
-      const cx=PL+gW*i+gW/2,isSel=sel===d.id;
-      return h("g",{key:d.id,onClick:()=>onSel(d.id),style:{cursor:"pointer"}},
-        isSel&&h("rect",{x:PL+gW*i+2,y:PT,width:gW-4,height:cH,fill:"rgba(49,130,246,0.07)",rx:6}),
-        h("rect",{x:cx-bW-2,y:PT+ys(d.yes),width:bW,height:Math.max((d.yes/Math.max(maxVal,1))*cH,2),fill:full?"#3182f6":"#00b074",rx:4}),
-        h("rect",{x:cx+2,y:PT+ys(d.no),width:bW,height:Math.max((d.no/Math.max(maxVal,1))*cH,2),fill:"#f45452",rx:4}),
-        h("text",{x:cx,y:H-8,textAnchor:"middle",fontSize:10,fill:isSel?"#3182f6":"#bbb",fontWeight:isSel?"700":"400"},d.label)
-      );
-    })
-  );
-}
-
-/* ── 앱 ── */
-function App(){
-  const [ready,setReady]       = useState(false);
-  const [dbErr,setDbErr]       = useState("");
-  const [scheds,setScheds]     = useState(DEF_SCHEDS);
-  const [roster,setRoster]     = useState([]);
-  const [votes,setVotes]       = useState({});
-  const [me,setMe]             = useState(()=>lsGet(LS_ME,null));
-  const [step,setStep]         = useState(()=>lsGet(LS_ME,null)?"main":"reg");
-  const [form,setForm]         = useState({rank:"",serial:"",name:""});
-  const [authErr,setAuthErr]   = useState("");
-  const [tab,setTab]           = useState("vote");
-  const [dTab,setDTab]         = useState(null);
-
-  // 관리자: Firebase Auth 기반
-  const [aOpen,setAOpen]       = useState(false);
-  const [adminUser,setAdminUser]= useState(null); // Firebase Auth user
-  const [isAdmin,setIsAdmin]   = useState(false);
-  const [adminEmail,setAdminEmail]= useState("");
-  const [adminPw,setAdminPw]   = useState("");
-  const [adminErr,setAdminErr] = useState("");
-  const [eScheds,setEScheds]   = useState([]);
-  const [aView,setAView]       = useState("schedules");
-  // 승인 대기 탭
-  const [pendingView,setPendingView] = useState(false);
-
-  /* Firebase Auth 상태 감지 */
-  useEffect(()=>{
-    const unsub=auth.onAuthStateChanged(user=>{
-      if(user&&user.uid===ADMIN_UID){
-        setAdminUser(user); setIsAdmin(true);
-      } else {
-        setAdminUser(null); setIsAdmin(false);
-      }
-    });
-    return()=>unsub();
-  },[]);
-
-  /* Firebase DB 구독 */
-  useEffect(()=>{
-    const tid=setTimeout(()=>setDbErr("Firebase 연결 실패.\ndatabaseURL을 확인해 주세요:\n"+firebaseConfig.databaseURL),10000);
-    db.ref("scheds").on("value",snap=>{
-      const v=snap.val();
-      if(v) setScheds(Object.values(v));
-      else  db.ref("scheds").set(Object.fromEntries(DEF_SCHEDS.map(s=>[s.id,s])));
-      setReady(true); clearTimeout(tid);
-    },err=>{setDbErr("오류: "+err.message);clearTimeout(tid);});
-    db.ref("roster").on("value",snap=>{const v=snap.val();setRoster(v?Object.values(v):[]);});
-    db.ref("votes").on("value",snap=>{setVotes(snap.val()||{});});
-    return()=>{db.ref("scheds").off();db.ref("roster").off();db.ref("votes").off();};
-  },[]);
-
-  useEffect(()=>lsSet(LS_ME,me),[me]);
-
-  /* 승인된 멤버만 필터 */
-  const approvedRoster = roster.filter(r=>r.approved===true);
-  const pendingRoster  = roster.filter(r=>!r.approved);
-
-  /* 등록 - pending 상태로 저장 */
-  const doRegister=async()=>{
-    const {rank,serial,name}=form;
-    if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
-    // 한글 이름 기본 검증
-    if(!/^[가-힣\s]{1,10}$/.test(name.trim())){setAuthErr("이름은 한글로 입력해 주세요.");return;}
-    if(roster.find(r=>r.rank===rank.trim()&&r.name===name.trim())){
-      setAuthErr("이미 등록된 이름입니다.\n본인이라면 '본인 확인'으로 로그인해 주세요.");return;
-    }
-    const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(serial.trim()));
-    const serialHash=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
-    const m={id:Date.now(),rank:rank.trim(),serialHash,name:name.trim(),approved:false};
-    db.ref("roster/"+m.id).set(m);
-    setAuthErr(""); setStep("pending");
-  };
-
-  /* 로그인 */
-  const doLogin=async()=>{
-    const {rank,serial,name}=form;
-    if(!rank.trim()||!serial.trim()||!name.trim()){setAuthErr("모든 항목을 입력해 주세요.");return;}
-    const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(serial.trim()));
-    const serialHash=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
-    const matched=roster.find(r=>r.rank===rank.trim()&&r.name===name.trim()&&(r.serialHash===serialHash||r.serial===serial.trim()));
-    if(!matched){setAuthErr("등록된 정보와 일치하지 않습니다.");return;}
-    if(!matched.approved){setAuthErr("관리자 승인 대기 중입니다.\n잠시 후 다시 시도해 주세요.");return;}
-    setMe({...matched,serial:serial.trim()});
-    setAuthErr(""); setStep("main"); setTab("vote");
-  };
-
-  /* 관리자 Firebase 로그인 */
-  const doAdminLogin=async()=>{
-    setAdminErr("");
-    try{
-      const cred=await auth.signInWithEmailAndPassword(adminEmail,adminPw);
-      if(cred.user.uid!==ADMIN_UID){
-        await auth.signOut(); setAdminErr("관리자 계정이 아닙니다.");return;
-      }
-      setEScheds(scheds.map(s=>Object.assign({},s)));
-      setAdminErr("");
-    }catch(e){
-      setAdminErr("로그인 실패: "+e.message);
-    }
-  };
-
-  const doAdminLogout=()=>{ auth.signOut(); setAOpen(false); };
-
-  /* 투표 */
-  const castVote=(sid,val)=>{
-    if(!me||scheds.find(s=>s.id===sid)&&scheds.find(s=>s.id===sid).closed)return;
-    db.ref("votes/"+sid+"/"+me.id).set(val);
-  };
-
-  const getSchedVotes=(sid)=>{
-    const num=String(sid).replace(/[^0-9]/g,"");
-    const merged={};
-    Object.keys(votes).forEach(k=>{
-      if(String(k).replace(/[^0-9]/g,"")===num) Object.assign(merged,votes[k]);
-    });
-    return merged;
-  };
-
-  const getVote=sid=>{
-    const sv=getSchedVotes(sid);
-    const uid=me&&me.id;
-    return sv[uid]||sv[String(uid)]||null;
-  };
-
-  const sortedScheds=sortSchedsByDate(scheds);
-
-  const stats=sortedScheds.map(s=>{
-    const sv=getSchedVotes(s.id);
-    const yes=approvedRoster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes").length;
-    const no =approvedRoster.filter(m=>sv[m.id]==="no" ||sv[String(m.id)]==="no" ).length;
-    const full=yes>=QUOTA; const need=Math.max(QUOTA-yes,0);
-    return{id:s.id,label:s.date.slice(0,5),yes,no,full,need};
-  });
-  const maxVal=Math.max(approvedRoster.length,1);
-  const avg=approvedRoster.length?Math.round(stats.reduce((a,s)=>a+s.yes,0)/scheds.length):0;
-  const safeTab=scheds.find(s=>s.id===dTab)?dTab:(scheds[0]&&scheds[0].id)||null;
-  const selStat=stats.find(s=>s.id===safeTab)||null;
-
-  /* 관리자 일정 저장 */
-  const saveA=()=>{
-    const ns=eScheds.filter(s=>s.date.trim());
-    const obj={};
-    ns.forEach(s=>{ obj[s.id]=Object.assign({},s); });
-    const prevIds=scheds.map(s=>s.id);
-    const nextIds=ns.map(s=>s.id);
-    const removedIds=prevIds.filter(id=>!nextIds.includes(id));
-    db.ref("scheds").set(obj)
-      .then(()=>Promise.all(removedIds.map(id=>db.ref("votes/"+id).remove())))
-      .then(()=>{ setPendingView(false); setAOpen(false); })
-      .catch(err=>alert("저장 실패: "+err.message));
-  };
-
-  /* 마감 + 워드 */
-  const handleClose=(s)=>{
-    db.ref("scheds/"+s.id+"/closed").set(!s.closed);
-    if(!s.closed){
-      const sv=getSchedVotes(s.id);
-      const yesMembers=approvedRoster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes");
-      exportWord(s,yesMembers);
-    }
-  };
-
-  /* 승인 / 거절 */
-  const approveUser=(m)=>db.ref("roster/"+m.id+"/approved").set(true);
-  const rejectUser=(m)=>db.ref("roster/"+m.id).remove();
-
-  /* 스타일 */
-  const BB={padding:"12px 0",borderRadius:12,border:"none",background:"#3182f6",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"};
-  const BG={padding:"12px 0",borderRadius:12,border:"1px solid rgba(0,0,0,0.1)",background:"#f5f6f8",color:"#555",fontSize:14,fontWeight:600,cursor:"pointer"};
-  const chip=t=>({fontSize:13,padding:"4px 12px",borderRadius:20,background:t==="yes"?"#e6faf3":"#fff0f0",color:t==="yes"?"#00805a":"#d63031"});
-  const pill=(a,t)=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:a?600:400,background:a?(t==="yes"?"#00b074":"#f45452"):"#f5f6f8",color:a?"#fff":"#888",border:"none",borderRadius:10,cursor:"pointer"});
-  const tb=k=>({flex:1,padding:"9px 0",fontSize:14,fontWeight:tab===k?700:400,background:tab===k?"#fff":"transparent",color:tab===k?"#3182f6":"#888",border:"none",borderRadius:11,cursor:"pointer",boxShadow:tab===k?"0 1px 4px rgba(0,0,0,0.08)":"none"});
-  const atb=k=>({flex:1,padding:"8px 0",fontSize:13,fontWeight:aView===k?700:400,border:"none",borderRadius:10,cursor:"pointer",background:aView===k?"#3182f6":"#f5f6f8",color:aView===k?"#fff":"#888"});
-
-  if(dbErr) return h("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",padding:"2rem",textAlign:"center"}},
-    h("p",{style:{fontSize:16,fontWeight:700,color:"#f45452",marginBottom:12}},"연결 오류"),
-    h("p",{style:{fontSize:13,color:"#888",whiteSpace:"pre-line",lineHeight:1.8}},dbErr)
-  );
-  if(!ready) return h("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontSize:15,color:"#aaa"}},"불러오는 중...");
-
-  /* 승인 대기 화면 */
-  if(step==="pending") return h("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}},
-    h("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
-      h("div",{style:{fontSize:40,marginBottom:16}},"⏳"),
-      h("h2",{style:{fontSize:18,fontWeight:700,marginBottom:8}},"승인 대기 중"),
-      h("p",{style:{fontSize:13,color:"#888",lineHeight:1.7,marginBottom:24}},"관리자가 가입 신청을 검토 중이에요.\n승인 완료 후 본인 확인으로 로그인해 주세요."),
-      h("button",{onClick:()=>{setStep("login");setForm({rank:"",serial:"",name:""});},style:Object.assign({},BB,{width:"100%"})},"본인 확인으로 이동")
-    )
-  );
-
-  /* 인증 화면 */
-  if(step!=="main"){
-    const isReg=step==="reg";
-    return h("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}},
-      h("div",{style:{background:"#fff",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:400,boxShadow:"0 4px 24px rgba(0,0,0,0.07)"}},
-        h("h1",{style:{fontSize:20,fontWeight:700,marginBottom:6}},"영외체련 인원조사"),
-        h("p",{style:{fontSize:13,color:"#888",marginBottom:24,lineHeight:1.6}},
-          isReg?"처음 방문이신가요? 기수·비밀번호(숫자 네 자리)·이름을 입력해 주세요.":"등록하신 정보로 본인 확인을 해주세요."),
-        ["rank","serial","name"].map((field,i)=>
-          h("div",{key:field,style:{marginBottom:10}},
-            h("label",{style:{fontSize:12,fontWeight:600,color:"#888",display:"block",marginBottom:5}},["기수","비밀번호(숫자 네 자리)","이름"][i]),
-            h("input",{className:"inp",type:"text",placeholder:field==="rank"?"예) 868":"",
-              value:form[field],
-              onChange:ev=>setForm(p=>Object.assign({},p,{[field]:ev.target.value})),
-              onKeyDown:ev=>ev.key==="Enter"&&(isReg?doRegister():doLogin())})
-          )
-        ),
-        authErr&&h("p",{style:{fontSize:13,color:"#f45452",marginBottom:12,whiteSpace:"pre-line"}},authErr),
-        h("button",{onClick:isReg?doRegister:doLogin,style:Object.assign({},BB,{width:"100%",marginBottom:12})},isReg?"등록하기":"로그인"),
-        h("button",{onClick:()=>{setAuthErr("");setForm({rank:"",serial:"",name:""});setStep(isReg?"login":"reg");},
-          style:{width:"100%",background:"none",border:"none",fontSize:13,color:"#3182f6",cursor:"pointer",fontWeight:600}},
-          isReg?"이미 등록하셨나요? 본인 확인":"처음 방문이신가요? 등록하기")
-      )
-    );
-  }
-
-  /* 메인 화면 */
-  return h("div",{style:{padding:"1.5rem 1.25rem",maxWidth:640,margin:"0 auto"}},
-
-    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"1.5rem"}},
-      h("div",null,
-        h("h1",{style:{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}},"영외체련 인원조사"),
-        h("p",{style:{marginTop:5,fontSize:13,color:"#888",lineHeight:1.65}},
-          "매월 2·4주 축구 고정 / 1·3주 타 종목 예정",h("br"),"투표 마감 : 전 주 일요일 오후 9시 30분")
-      ),
-      h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}},
-        h("button",{onClick:()=>{setAOpen(true);setAdminErr("");setAdminEmail("");setAdminPw("");},
-          style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,
-            background:isAdmin?"#3182f6":"#f5f6f8",color:isAdmin?"#fff":"#555",
-            border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}},
-          isAdmin?"관리자 모드"+(pendingRoster.length>0?" ("+pendingRoster.length+"명 대기)":""):"관리자"),
-        h("div",{style:{display:"flex",alignItems:"center",gap:8}},
-          h("span",{style:{fontSize:12,color:"#aaa"}},me.rank+"기 "+me.name),
-          h("button",{onClick:()=>{setStep("login");setAuthErr("");setForm({rank:"",serial:"",name:""});},
-            style:{fontSize:12,color:"#3182f6",background:"none",border:"none",cursor:"pointer",fontWeight:600,padding:0}},"로그아웃")
-        )
-      )
-    ),
-
-    h("div",{style:{display:"flex",marginBottom:"1.5rem",background:"#eef0f3",borderRadius:14,padding:4}},
-      h("button",{style:tb("vote"),onClick:()=>setTab("vote")},"투표"),
-      h("button",{style:tb("dashboard"),onClick:()=>setTab("dashboard")},"현황")
-    ),
-
-    /* 투표 탭 */
-    tab==="vote"&&h("div",{style:{display:"flex",flexDirection:"column",gap:10}},
-      sortedScheds.map(s=>{
-        const v=getVote(s.id);
-        return h("div",{key:s.id,className:"card"},
-          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
-            h("div",null,
-              h("p",{style:{fontSize:15,fontWeight:700}},s.date),
-              h("p",{style:{marginTop:4,fontSize:14,fontWeight:600,color:"#3182f6"}},"[ "+s.event+" ]")
-            ),
-            h("div",{style:{display:"flex",gap:6,alignItems:"center"}},
-              s.closed&&h("span",{style:{fontSize:12,fontWeight:600,padding:"3px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
-              v&&!s.closed&&h("span",{style:chip(v)},v==="yes"?"참석":"불참")
-            )
-          ),
-          s.closed
-            ? h("div",{style:{padding:"10px 14px",background:"#f5f6f8",borderRadius:10,fontSize:13,color:"#aaa",textAlign:"center"}},"투표가 마감되었습니다")
-            : h("div",{style:{display:"flex",gap:8}},
-                h("button",{style:pill(v==="yes","yes"),onClick:()=>castVote(s.id,"yes")},"참석"),
-                h("button",{style:pill(v==="no","no"),onClick:()=>castVote(s.id,"no")},"불참")
-              )
-        );
-      })
-    ),
-
-    /* 현황 탭 */
-    tab==="dashboard"&&h("div",null,
-      h("div",{style:{display:"flex",gap:10,marginBottom:12}},
-        [{l:"등록 인원",v:approvedRoster.length+"명"},{l:"평균 참석",v:avg+"명"}].map(c=>
-          h("div",{key:c.l,style:{background:"#f5f6f8",borderRadius:16,padding:"16px 18px",flex:1}},
-            h("p",{style:{fontSize:12,color:"#888",fontWeight:600}},c.l),
-            h("p",{style:{marginTop:6,fontSize:26,fontWeight:700,letterSpacing:"-0.5px"}},c.v)
-          )
-        )
-      ),
-      h("div",{className:"card"},
-        h("p",{style:{marginBottom:10,fontSize:15,fontWeight:700}},"일정별 참석 인원"),
-        h("div",{style:{display:"flex",gap:14,marginBottom:10,fontSize:12,color:"#888"}},
-          h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#00b074",display:"inline-block"}}),"참석"),
-          h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#3182f6",display:"inline-block"}}),"참석(인원충족)"),
-          h("span",{style:{display:"flex",alignItems:"center",gap:5}},h("span",{style:{width:10,height:10,borderRadius:3,background:"#f45452",display:"inline-block"}}),"불참")
-        ),
-        h("p",{style:{fontSize:12,color:"#bbb",marginBottom:8}},"막대를 클릭하면 명단을 확인할 수 있어요"),
-        scheds.length>0
-          ? h(BarChart,{data:stats,maxVal,sel:safeTab,onSel:setDTab})
-          : h("p",{style:{fontSize:13,color:"#bbb",textAlign:"center",padding:"2rem 0"}},"등록된 일정이 없습니다"),
-        h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginTop:12}},
-          stats.map(d=>{
-            const s=sortedScheds.find(x=>x.id===d.id);
-            if(!s)return null;
-            return h("div",{key:d.id,style:{padding:"10px 14px",borderRadius:12,background:d.full?"#e6faf3":"#fff8e6",display:"flex",alignItems:"center",justifyContent:"space-between"}},
-              h("div",null,
-                h("p",{style:{fontSize:13,fontWeight:700,color:d.full?"#00805a":"#b35c00"}},s.date.slice(0,5)+" · "+s.event),
-                h("p",{style:{fontSize:12,marginTop:2,color:d.full?"#00a066":"#cc6a00"}},
-                  d.full?"영외체련 확정! 현재 "+d.yes+"명 참석 예정":d.need+"명만 더 모이면 영외체련 확정!")
-              ),
-              d.full
-                ? h("span",{style:{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,background:"#00b074",color:"#fff"}},"인원 충족")
-                : h("span",{style:{fontSize:13,fontWeight:700,color:"#cc6a00"}},d.yes+"/"+QUOTA)
-            );
-          })
-        )
-      ),
-      safeTab&&selStat&&(()=>{
-        const s=scheds.find(x=>x.id===safeTab);
-        if(!s)return null;
-        const full=selStat.yes>=QUOTA;
-        const sv=getSchedVotes(safeTab);
-        const getV=m=>sv[m.id]||sv[String(m.id)]||null;
-        const ORDER={yes:0,no:1,null:2};
-        const sortedRoster=[...approvedRoster].sort((a,b)=>{
-          const va=getV(a)||"null",vb=getV(b)||"null";
-          if(ORDER[va]!==ORDER[vb])return ORDER[va]-ORDER[vb];
-          return Number(b.rank||0)-Number(a.rank||0);
-        });
-        return h("div",{className:"card"},
-          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
-            h("div",null,
-              h("p",{style:{fontSize:15,fontWeight:700}},s.date+" · "+s.event),
-              h("div",{style:{display:"flex",gap:10,marginTop:4}},
-                h("span",{style:{fontSize:13,color:"#00805a",fontWeight:600}},"참석 "+selStat.yes+"명"),
-                h("span",{style:{fontSize:13,color:"#d63031",fontWeight:600}},"불참 "+selStat.no+"명"),
-                h("span",{style:{fontSize:13,color:"#bbb"}},"미투표 "+(approvedRoster.length-selStat.yes-selStat.no)+"명")
-              )
-            ),
-            h("div",{style:{display:"flex",gap:6}},
-              s.closed&&h("span",{style:{fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:20,background:"#f0f0f0",color:"#888"}},"마감"),
-              full&&h("span",{style:{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:20,background:"#e8f0fe",color:"#1a56db"}},"인원 충족")
-            )
-          ),
-          approvedRoster.length===0
-            ? h("p",{style:{fontSize:13,color:"#bbb"}},"등록된 인원이 없습니다")
-            : h("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-                sortedRoster.map(m=>{
-                  const v=getV(m);
-                  return h("div",{key:m.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#f5f6f8",borderRadius:12}},
-                    h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                      h("div",{style:{width:34,height:34,borderRadius:"50%",background:"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#3182f6",flexShrink:0}},(m.name||"?")[0]),
-                      h("div",null,
-                        h("p",{style:{fontSize:14,fontWeight:600}},m.name),
-                        m.rank&&h("p",{style:{fontSize:12,color:"#888"}},m.rank+"기")
-                      )
-                    ),
-                    h("span",{style:v?chip(v):{fontSize:13,color:"#bbb"}},v==="yes"?"참석":v==="no"?"불참":"미투표")
-                  );
-                })
-              )
-        );
-      })()
-    ),
-
-    /* 관리자 모달 */
-    aOpen&&h("div",{className:"overlay",onClick:ev=>{if(ev.target===ev.currentTarget)setAOpen(false)}},
-      h("div",{className:"mbox"},
-        !isAdmin
-          ? h("div",null,
-              h("p",{style:{marginBottom:20,fontSize:18,fontWeight:700}},"관리자 로그인"),
-              h("p",{style:{fontSize:12,color:"#888",marginBottom:14}},"Firebase Authentication 계정으로 로그인하세요"),
-              h("input",{className:"inp",placeholder:"이메일",value:adminEmail,type:"email",
-                onChange:ev=>setAdminEmail(ev.target.value),style:{marginBottom:8}}),
-              h("input",{className:"inp",placeholder:"비밀번호",value:adminPw,type:"password",
-                onChange:ev=>setAdminPw(ev.target.value),
-                onKeyDown:ev=>ev.key==="Enter"&&doAdminLogin(),
-                style:{marginBottom:8}}),
-              adminErr&&h("p",{style:{marginBottom:12,fontSize:13,color:"#f45452"}},adminErr),
-              h("div",{style:{display:"flex",gap:8}},
-                h("button",{onClick:()=>setAOpen(false),style:Object.assign({},BG,{flex:1})},"취소"),
-                h("button",{onClick:doAdminLogin,style:Object.assign({},BB,{flex:1})},"로그인")
-              )
-            )
-          : h("div",null,
-              h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
-                h("p",{style:{fontSize:18,fontWeight:700}},"관리자 설정"),
-                h("button",{onClick:doAdminLogout,style:{fontSize:13,color:"#f45452",background:"none",border:"none",cursor:"pointer",fontWeight:600}},"로그아웃")
-              ),
-              h("div",{style:{display:"flex",gap:6,marginBottom:18,flexWrap:"wrap"}},
-                h("button",{style:atb("schedules"),onClick:()=>setAView("schedules")},"일정 관리"),
-                h("button",{style:atb("votes"),onClick:()=>setAView("votes")},"투표 마감"),
-                h("button",{style:Object.assign({},atb("pending"),{position:"relative"}),onClick:()=>setAView("pending")},
-                  "가입 승인",
-                  pendingRoster.length>0&&h("span",{style:{marginLeft:5,background:"#f45452",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:11,fontWeight:700}},pendingRoster.length)
-                )
-              ),
-
-              /* 일정 관리 */
-              aView==="schedules"&&h("div",null,
-                h("div",{style:{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #eee"}},
-                  h("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"날짜"),
-                  h("span",{style:{fontSize:12,fontWeight:600,color:"#888",flex:1}},"종목"),
-                  h("span",{style:{width:32}})
-                ),
-                h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12}},
-                  eScheds.map(s=>h("div",{key:s.id,style:{display:"flex",gap:6,alignItems:"center"}},
-                    h("input",{className:"inp",placeholder:"3월 20일 (금)",value:s.date,style:{flex:1,fontSize:13},
-                      onChange:ev=>setEScheds(p=>p.map(x=>x.id===s.id?Object.assign({},x,{date:ev.target.value}):x))}),
-                    h("input",{className:"inp",placeholder:"종목",value:s.event,style:{flex:1,fontSize:13},
-                      onChange:ev=>setEScheds(p=>p.map(x=>x.id===s.id?Object.assign({},x,{event:ev.target.value}):x))}),
-                    h("button",{onClick:()=>setEScheds(p=>p.filter(x=>x.id!==s.id)),
-                      style:{width:32,height:36,borderRadius:8,border:"1px solid #e0e0e0",background:"#f5f6f8",color:"#888",cursor:"pointer",fontSize:16}},"×")
-                  ))
-                ),
-                h("button",{onClick:()=>setEScheds(p=>[...p,{id:"s"+Date.now(),date:"",event:"",closed:false}]),
-                  style:{width:"100%",padding:"10px 0",borderRadius:12,border:"1.5px dashed #c0c8d8",background:"transparent",color:"#3182f6",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:10}},"+ 일정 추가"),
-                h("div",{style:{display:"flex",gap:8}},
-                  h("button",{onClick:()=>setAOpen(false),style:Object.assign({},BG,{flex:1})},"취소"),
-                  h("button",{onClick:saveA,style:Object.assign({},BB,{flex:1})},"저장")
-                )
-              ),
-
-              /* 투표 마감 */
-              aView==="votes"&&h("div",null,
-                h("p",{style:{marginBottom:12,fontSize:13,color:"#888"}},"마감 시 참석 명단 워드 파일이 저장됩니다"),
-                h("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:16}},
-                  sortedScheds.map(s=>{
-                    const sv=getSchedVotes(s.id);
-                    const yesCnt=approvedRoster.filter(m=>sv[m.id]==="yes"||sv[String(m.id)]==="yes").length;
-                    return h("div",{key:s.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"#f5f6f8",borderRadius:14}},
-                      h("div",null,
-                        h("p",{style:{fontSize:14,fontWeight:600}},s.date||"날짜 미설정"),
-                        h("p",{style:{marginTop:2,fontSize:12,color:"#888"}},(s.event||"종목 미설정")+" · 참석 "+yesCnt+"명")
-                      ),
-                      h("button",{onClick:()=>handleClose(s),
-                        style:{padding:"7px 14px",fontSize:13,fontWeight:600,borderRadius:10,border:"none",cursor:"pointer",
-                          background:s.closed?"#e6faf3":"#fff0f0",color:s.closed?"#00805a":"#f45452"}},s.closed?"열기":"마감")
-                    );
-                  })
-                ),
-                h("button",{onClick:()=>setAOpen(false),style:Object.assign({},BG,{width:"100%"})},"닫기")
-              ),
-
-              /* 가입 승인 */
               aView==="pending"&&h("div",null,
                 pendingRoster.length===0
                   ? h("p",{style:{fontSize:13,color:"#bbb",textAlign:"center",padding:"1.5rem 0"}},"대기 중인 가입 신청이 없습니다")
