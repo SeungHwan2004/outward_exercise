@@ -142,7 +142,10 @@ function SurveyPage({me,isAdmin,onBack,setAView,setAOpen}){
   };
 
   const deleteItem=(itemId)=>{
-    if(!isAdmin)return;
+    if(!isAdmin){
+  alert("관리자만 항목 추가 가능");
+  return;
+}
     db.ref("survey/items/"+itemId).remove();
   };
 
